@@ -1,11 +1,20 @@
 # CV Studio
 
-New here or not technical? Read [START-HERE.md](START-HERE.md) and use
-`start-windows.bat` on Windows.
-
 CV Studio is a deliberately small, local-only editor for clean, professional CVs.
-It can be published as a standalone project; it does not rely on this directory's
-parent project or include any personal CV content.
+It runs on your computer and does not upload your CV anywhere.
+
+## Download and start on Windows
+
+You do **not** need to know Git or use a command line.
+
+1. On this GitHub page, click the green **Code** button near the top.
+2. Choose **Download ZIP**.
+3. Open your Downloads folder, right-click the ZIP file and choose **Extract All**.
+4. Open the extracted `cv-studio` folder and read [START-HERE.md](START-HERE.md).
+5. Follow the one-time Python setup, then double-click `start-windows.bat`.
+
+Your CV stays in the folder on your computer. Back up the local profile file as
+explained in the guide.
 
 The editor presents ordinary fields, repeatable cards and show/hide switches. It
 stores a portable local `content/cv.local.json` document, then feeds that document to a
@@ -13,8 +22,6 @@ selected template. The data is not tied to a template, so another template can
 be added without making the editor user learn markup or CSS.
 
 ## Start
-
-For a nontechnical Windows walkthrough, read [START-HERE.md](START-HERE.md).
 
 For developers, from this directory:
 
@@ -24,10 +31,9 @@ make serve
 ```
 
 Open <http://127.0.0.1:8765>. Nothing is sent over the network; the server binds
-only to the loopback address. Click **Save changes** to update `content/cv.json`.
-The preview updates while editing. Use **Download PDF** when WeasyPrint is
-installed (the parent project already has it in its `uv` environment), otherwise
-use **Download HTML** and print it from the browser.
+only to the loopback address. Click **Save changes** to update your local profile.
+The preview updates while editing. Use **Download PDF** when the PDF helper is
+installed, otherwise use **Download HTML** and print it from the browser.
 
 ```bash
 python server.py --render  # render without opening the editor

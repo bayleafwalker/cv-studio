@@ -4,10 +4,13 @@ This little app runs on your own computer. Your CV is not uploaded anywhere.
 
 ## The first time on Windows
 
-1. Download and unzip the app folder from GitHub.
-2. Install **Python 3** from [python.org](https://www.python.org/downloads/). During installation, tick **Add Python to PATH** if you see that choice.
-3. Open the unzipped folder and double-click `start-windows.bat`.
-4. Your web browser should open the editor. If it does not, open this address yourself: `http://127.0.0.1:8765`.
+1. On the project’s main GitHub page, click the green **Code** button and choose
+   **Download ZIP**. You do not need Git or a GitHub account.
+2. Open your Downloads folder, right-click the ZIP file and choose **Extract All**.
+   Open the extracted `cv-studio` folder.
+3. Install **Python 3** from [python.org](https://www.python.org/downloads/). During installation, tick **Add Python to PATH** if you see that choice.
+4. Double-click `start-windows.bat`.
+5. Your web browser should open the editor. If it does not, open this address yourself: `http://127.0.0.1:8765`.
 
 The first start may take a few minutes because Windows installs the optional
 PDF helper. Leave the black window open while using the editor. When you are
