@@ -7,11 +7,14 @@ It runs only on your computer and does not upload your CV anywhere.
 
 You do **not** need to know Git or use a command line.
 
-1. On this GitHub page, click the green **Code** button near the top.
-2. Choose **Download ZIP**.
+1. Open [the latest release](../../releases/latest).
+2. Under **Assets**, download `cv-studio-windows.zip`.
 3. Open your Downloads folder, right-click the ZIP file and choose **Extract All**.
-4. Open the extracted `cv-studio` folder and read [START-HERE.md](START-HERE.md).
+4. Open the extracted `cv-studio` folder and read `START-HERE.md`.
 5. Follow the one-time Python setup, then double-click `start-windows.bat`.
+
+If the release ZIP is unavailable, use the green **Code** button on this page and
+choose **Download ZIP** instead.
 
 Your CV stays in the folder on your computer. Back up the local profile file as
 explained in the guide.

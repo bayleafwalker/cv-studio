@@ -4,8 +4,9 @@ This little app runs on your own computer. Your CV is not uploaded anywhere.
 
 ## The first time on Windows
 
-1. On the project’s main GitHub page, click the green **Code** button and choose
-   **Download ZIP**. You do not need Git or a GitHub account.
+1. On the project’s GitHub page, open **Releases** and download
+   `cv-studio-windows.zip` from the latest release’s **Assets** section. You do
+   not need Git or a GitHub account.
 2. Open your Downloads folder, right-click the ZIP file and choose **Extract All**.
    Open the extracted `cv-studio` folder.
 3. Install **Python 3** from [python.org](https://www.python.org/downloads/). During installation, tick **Add Python to PATH** if you see that choice.
@@ -41,3 +42,8 @@ safe place.
 
 If you want to start over, close the app and rename or delete
 `content/cv.local.json`. The next start uses the safe example CV again.
+
+## If you only see “Code → Download ZIP”
+
+That also works. Download it, extract it, and follow the same steps above. A
+release ZIP is simply a tidier, ready-to-use version of the same little app.
