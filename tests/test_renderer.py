@@ -37,6 +37,19 @@ class RendererTests(unittest.TestCase):
             finally:
                 server.LOCAL_SOURCE = original
 
+    def test_named_profiles_are_isolated(self):
+        sample = load_cv()
+        old_local, old_profiles = server.LOCAL_SOURCE, server.PROFILES_DIR
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            server.LOCAL_SOURCE, server.PROFILES_DIR = root / "cv.local.json", root / "profiles"
+            try:
+                server.save_cv(sample, "product-manager")
+                self.assertEqual(server.load_cv("product-manager")["person"]["name"], "Your Name")
+                self.assertIn("product-manager", {p["id"] for p in server.list_profiles()})
+            finally:
+                server.LOCAL_SOURCE, server.PROFILES_DIR = old_local, old_profiles
+
 
 if __name__ == "__main__":
     unittest.main()

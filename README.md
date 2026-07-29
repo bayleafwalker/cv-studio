@@ -16,6 +16,20 @@ You do **not** need to know Git or use a command line.
 Your CV stays in the folder on your computer. Back up the local profile file as
 explained in the guide.
 
+## Screenshots
+
+### Editor
+
+![CV Studio editor, with profile selection, template selection, and live preview](assets/screenshots/editor.png)
+
+### Classic two-column template
+
+![Classic two-column sample CV](assets/screenshots/classic-two-column.png)
+
+### Modern single-column template
+
+![Modern single-column sample CV](assets/screenshots/modern-single-column.png)
+
 The editor presents ordinary fields, repeatable cards and show/hide switches. It
 stores a portable local `content/cv.local.json` document, then feeds that document to a
 selected template. The data is not tied to a template, so another template can

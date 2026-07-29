@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 content/cv.local.json
+content/profiles/
 content/cv.html
 dist/
 .venv/
