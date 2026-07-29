@@ -1,0 +1,29 @@
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+html { background: #fff; }
+body { margin: 0; color: #333; font-family: Arial, Helvetica, sans-serif; font-size: 9.2pt; line-height: 1.35; }
+.cv { display: grid; grid-template-columns: 31% 69%; min-height: 297mm; }
+.sidebar { padding: 25mm 10mm 20mm 18mm; background: #fafafa; }
+.main { padding: 21mm 18mm 19mm 13mm; }
+h1 { margin: 0 0 3pt; color: #222; font-size: 25pt; font-weight: 400; letter-spacing: -.4pt; }
+.headline { margin: 0 0 8pt; font-size: 11pt; color: #555; }
+.summary { margin: 0 0 16pt; max-width: 95%; color: #444; }
+.sidebar-section { margin: 0 0 21pt; }
+.sidebar h2, .main h2 { margin: 0 0 8pt; font-size: 10pt; font-weight: 700; letter-spacing: .3pt; text-transform: uppercase; }
+.contact { margin-bottom: 28pt; }
+.contact-item { margin: 0 0 7pt; }
+.contact-label { display: block; color: #777; font-size: 7.6pt; text-transform: uppercase; letter-spacing: .5pt; }
+.contact-link { font-size: 8.1pt; letter-spacing: -.15pt; white-space: nowrap; }
+.tags { display: flex; flex-wrap: wrap; gap: 5pt 8pt; }
+.tag { white-space: nowrap; }
+.main-section { margin: 0 0 19pt; }
+.main-section.page-break { break-before: page; }
+.entry { margin: 0 0 13pt; }
+.entry:last-child { margin-bottom: 0; }
+.entry-title { margin: 0; font-size: 10pt; font-weight: 700; line-height: 1.25; }
+.organisation { margin: 1pt 0; font-weight: 700; }
+.entry-meta { display: flex; justify-content: space-between; gap: 10pt; margin: 1pt 0 5pt; color: #666; font-size: 8.4pt; }
+.entry-description { margin: 0 0 4pt; }
+ul { margin: 3pt 0 0 13pt; padding: 0; }
+li { margin: 0 0 2pt; }
+@media screen { html { background: #e8ecee; } body { margin: 16px auto; width: 210mm; min-height: 297mm; box-shadow: 0 2px 16px #9aa3a6; } }

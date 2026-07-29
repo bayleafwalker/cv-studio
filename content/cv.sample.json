@@ -1,0 +1,44 @@
+{
+  "template": "classic-two-column",
+  "person": {
+    "name": "Your Name",
+    "headline": "Your professional headline",
+    "summary": "Write two or three clear sentences about the work you do, the strengths you bring, and the kind of role you are looking for."
+  },
+  "contact": [
+    {"label": "Email", "value": "your.name@example.com", "visible": true},
+    {"label": "Phone", "value": "+00 000 000 000", "visible": true},
+    {"label": "Location", "value": "City, Country", "visible": true},
+    {"label": "LinkedIn", "value": "linkedin.com/in/yourname", "visible": true}
+  ],
+  "sidebar_sections": [
+    {"title": "Skills", "visible": true, "items": ["Skill one", "Skill two", "Skill three", "Skill four"]},
+    {"title": "Languages", "visible": true, "items": ["Language one", "Language two"]}
+  ],
+  "sections": [
+    {
+      "type": "education",
+      "title": "Education",
+      "visible": true,
+      "entries": [
+        {"title": "Degree or qualification", "organisation": "School or university", "dates": "2020 – 2024", "location": "", "description": "Add the major, concentration, notable course work or achievement that supports your application.", "bullets": [], "visible": true}
+      ]
+    },
+    {
+      "type": "experience",
+      "title": "Work experience",
+      "visible": true,
+      "entries": [
+        {"title": "Job title", "organisation": "Organisation", "dates": "2022 – Present", "location": "City, Country", "description": "Briefly introduce the organisation or your remit if it adds useful context.", "bullets": ["Start each achievement with an action and state the outcome.", "Use a second bullet for another relevant responsibility or result."], "visible": true}
+      ]
+    },
+    {
+      "type": "projects",
+      "title": "Significant projects",
+      "visible": true,
+      "entries": [
+        {"title": "Relevant project", "organisation": "", "dates": "", "location": "", "description": "Describe a project, volunteer role, portfolio item or other evidence of your skills.", "bullets": [], "visible": true}
+      ]
+    }
+  ]
+}

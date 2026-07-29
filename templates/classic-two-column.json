@@ -1,0 +1,11 @@
+{
+  "id": "classic-two-column",
+  "label": "Classic two-column",
+  "renderer": "classic",
+  "page": "A4",
+  "regions": {
+    "sidebar": ["contact", "sidebar_sections"],
+    "main": ["person", "sections"]
+  },
+  "supported_section_types": ["education", "experience", "projects"]
+}

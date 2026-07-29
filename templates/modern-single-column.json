@@ -1,0 +1,8 @@
+{
+  "id": "modern-single-column",
+  "label": "Modern single-column",
+  "renderer": "modern",
+  "page": "A4",
+  "regions": {"main": ["person", "contact", "sections"]},
+  "supported_section_types": ["education", "experience", "projects"]
+}

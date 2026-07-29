@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+content/cv.local.json
+content/cv.html
+dist/
+.venv/
