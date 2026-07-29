@@ -1,7 +1,7 @@
-# CV Studio
+# CV Studio — a stupidly simple little CV generator
 
-CV Studio is a deliberately small, local-only editor for clean, professional CVs.
-It runs on your computer and does not upload your CV anywhere.
+CV Studio is a stupidly simple little CV generator for clean, professional CVs.
+It runs only on your computer and does not upload your CV anywhere.
 
 ## Download and start on Windows
 

@@ -1,4 +1,4 @@
-# Make and save your CV
+# A stupidly simple little CV generator
 
 This little app runs on your own computer. Your CV is not uploaded anywhere.
 
@@ -12,9 +12,8 @@ This little app runs on your own computer. Your CV is not uploaded anywhere.
 4. Double-click `start-windows.bat`.
 5. Your web browser should open the editor. If it does not, open this address yourself: `http://127.0.0.1:8765`.
 
-The first start may take a few minutes because Windows installs the optional
-PDF helper. Leave the black window open while using the editor. When you are
-finished, close that window.
+Leave the black window open while using the editor. When you are finished,
+close that window.
 
 ## Editing your CV
 
@@ -27,8 +26,10 @@ finished, close that window.
 4. Use **Move up** and **Move down** to choose the section order. Tick **Start
    this section on a new page** if you want a deliberate page break.
 5. The page at the right updates as you type. Click **Save changes** often.
-6. Use **Download PDF** when ready. If it says the PDF helper is unavailable,
-   download HTML instead, open it in your browser, and choose Print → Save as PDF.
+6. When ready, use your browser’s Print command (usually `Ctrl` + `P`) and
+   choose **Save as PDF**. This is the normal Windows way to make your PDF.
+   The **Download PDF** button is optional and only works when the extra PDF
+   helper has already been installed.
 
 ## Where your work is saved
 

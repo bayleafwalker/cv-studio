@@ -6,13 +6,10 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Preparing the local CV editor. This only happens on the first start.
-py -3 -m pip install -r requirements.txt
-if errorlevel 1 (
-  echo.
-  echo The optional PDF helper could not be installed. The editor can still run;
-  echo use Download HTML and print it as a PDF from your browser.
-)
+echo Starting CV Studio on this computer...
+start "CV Studio server" /b py -3 server.py
+timeout /t 2 /nobreak >nul
 start "" http://127.0.0.1:8765
-py -3 server.py
+echo.
+echo Keep this window open while using CV Studio. Close it when you are done.
 pause
