@@ -1,0 +1,40 @@
+*{box-sizing:border-box}
+body{margin:0;font:14px system-ui,sans-serif;color:#263944;background:#f2f5f6}
+.app{display:grid;grid-template-columns:minmax(330px,43%) 1fr;height:100vh}
+.editor{padding:22px;overflow:auto}
+.preview{padding:18px;background:#dce3e6;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:8px}
+h1{margin:0 0 6px;font-size:24px}
+h2{margin:24px 0 8px;font-size:17px}
+.hint{color:#62737d;margin:0 0 12px}
+label{display:block;margin:10px 0 4px;font-weight:650}
+input,textarea,select{width:100%;border:1px solid #b9cbd2;border-radius:5px;padding:8px;font:inherit;background:white}
+textarea{min-height:70px;resize:vertical}
+.card{margin:10px 0;padding:12px;border:1px solid #cbd7dc;border-radius:7px;background:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+button{border:0;border-radius:5px;padding:9px 12px;background:#147084;color:white;font:inherit;font-weight:650;cursor:pointer}
+button.secondary{background:#60747e}
+button.danger{background:#9a3940}
+button.remove{background:#9a3940;padding:5px 8px;float:right}
+.mini{float:right;margin-right:6px}.mini button{padding:4px 7px;margin-left:3px}
+button:disabled{opacity:.5;cursor:default}
+.toggle{display:flex;align-items:center;gap:6px;font-weight:500}
+.toggle input{width:auto}
+.status{min-height:20px;color:#176238;margin:6px 0}
+.problem{display:none;margin:10px 0;padding:10px 12px;border:1px solid #d9a3a7;border-radius:7px;background:#fbeaec;color:#7a1f27;white-space:pre-wrap}
+.problem.show{display:block}
+.notice{display:none;margin:10px 0;padding:10px 12px;border:1px solid #b9cbd2;border-radius:7px;background:#e7f3f6;color:#0f4c5a}
+.notice.show{display:block}
+.notice button{margin-left:8px;padding:5px 9px}
+.steps{margin:0 0 6px;padding-left:20px;color:#3c4f5a}
+.steps li{margin:3px 0}
+.toolbar{position:sticky;top:-22px;background:#f2f5f6;padding:8px 0;margin:-8px 0 4px;z-index:2;border-bottom:1px solid #d7e0e4}
+code{background:#e7edf0;padding:1px 4px;border-radius:3px}
+.sheet{position:relative;width:210mm;flex:none;transform-origin:top center;background:white;box-shadow:0 2px 12px #89969b}
+iframe{display:block;width:210mm;height:297mm;border:0;background:white}
+.guides{position:absolute;inset:0;pointer-events:none}
+.pagecount{color:#62737d;font-size:13px;flex:none}
+body.dragging::after{content:"Drop your CV file to open it";position:fixed;inset:12px;border:3px dashed #147084;border-radius:12px;background:#f2f5f6ee;display:flex;align-items:center;justify-content:center;font-size:24px;color:#147084;z-index:10}
+.viewtoggle{display:none;position:fixed;bottom:14px;right:14px;z-index:5;box-shadow:0 2px 10px #0004}
+@media(max-width:1000px){.app{grid-template-columns:1fr;height:100vh}.preview{display:none;padding:10px}.viewtoggle{display:block}body.show-preview .preview{display:flex}body.show-preview .editor{display:none}}
+@media print{body{display:none}}

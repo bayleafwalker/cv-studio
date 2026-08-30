@@ -1,0 +1,6 @@
+{
+  "name": "cv-studio-e2e",
+  "private": true,
+  "type": "module",
+  "dependencies": { "playwright": "1.54.0" }
+}

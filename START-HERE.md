@@ -48,7 +48,9 @@ to ChatGPT and ask for the complete corrected file.
    this CV** creates a separate version for another job type; **Rename** and
    **Delete this CV** do what they say.
 2. Choose a style: **Classic two-column** is compact; **Modern single-column**
-   matches the usual published CV style.
+   matches the usual published CV style; **Plain (ATS-friendly)** has no
+   colour or columns, which is safest when a company's recruiting software
+   reads the PDF before a person does.
 3. Replace the text in “About you”, “Contact details”, and the cards below.
    Add achievements one per line. Use ▲ ▼ to reorder cards, **Remove** to drop
    one (an **Undo** button appears for a moment), and the **Add …** buttons to
@@ -62,7 +64,8 @@ to ChatGPT and ask for the complete corrected file.
    block also has a **Start on a new page** switch in the form.
 5. When ready, click **Save as PDF**. On most computers the normal print
    window opens; choose **Save as PDF** (or **Microsoft Print to PDF**) as the
-   printer and click Save. That is the normal Windows way to make a PDF.
+   printer, check that paper is A4 and margins are Default, and click Save.
+   That is the normal Windows way to make a PDF.
 
 ## Where your work is saved
 

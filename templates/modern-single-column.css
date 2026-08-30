@@ -1,7 +1,7 @@
 @page { size: A4; margin: 14mm 15.5mm; }
-* { box-sizing: border-box; }
+* { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 a { color: inherit; text-decoration: none; }
-html { font-family: "Liberation Sans", Arial, sans-serif; color: #263944; }
+html { font-family: Arial, Helvetica, "Liberation Sans", sans-serif; color: #263944; }
 body { margin: 0; font-size: 9.15pt; line-height: 1.34; overflow-wrap: break-word; }
 .masthead { border-bottom: 2.2pt solid #147084; padding-bottom: 8pt; margin-bottom: 8pt; }
 h1 { margin: 0 0 4pt; font-size: 24pt; line-height: 1; color: #263944; }

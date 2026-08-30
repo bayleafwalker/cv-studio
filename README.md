@@ -59,6 +59,7 @@ installed and otherwise opens the browser's print dialog for Save as PDF.
 ```bash
 python server.py --render  # render without opening the editor
 make test                  # renderer and manifest checks
+make e2e                   # browser walkthrough of the editor (needs Node)
 ```
 
 ## Structure
@@ -67,8 +68,11 @@ make test                  # renderer and manifest checks
 - `content/cv.local.json` — automatically created on the first save and ignored
   by Git. Extra CVs live in `content/profiles/*.json`; the whole `content`
   folder (except the sample) is personal and ignored by Git.
-- `templates/` — presentation-only templates. `classic-two-column` reproduces
-  the compact 2018 reference family.
+- `templates/` — presentation-only templates: `classic-two-column` (compact
+  2018 reference family), `modern-single-column`, and `plain-ats` (no colour,
+  no columns, for automated CV parsers). Each manifest declares its page
+  margins; the preview uses them to show where pages end.
+- `static/` — the editor's HTML, CSS and JavaScript, served by `server.py`.
 - `server.py` — local editor, validation, HTML rendering and optional PDF export.
 - `update-windows.bat` / `update-windows.ps1` — fetch the latest release ZIP
   over the installed files, keeping `content`.

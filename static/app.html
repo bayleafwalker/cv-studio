@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CV Studio — a stupidly simple little CV generator</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/static/app.css"></head><body><div class="app"><main class="editor">
+<h1>A stupidly simple little CV generator</h1>
+<p class="hint">It runs only on this computer. Edit plain fields and cards; your preview updates as you type and saves by itself.</p>
+<div class="toolbar"><div class="actions">
+<button onclick="savePDF()" title="Makes a PDF; if the print window opens, choose Save as PDF there">Save as PDF</button>
+<button class="secondary" onclick="save()">Save now</button>
+<button class="secondary" onclick="document.querySelector('#backup-file').click()">Open a CV file…</button>
+<input id="backup-file" type="file" accept=".json,application/json" hidden>
+<button class="secondary" onclick="copyForChat()">Copy example for ChatGPT</button>
+<button class="secondary" onclick="downloadFile('html')">Download HTML</button>
+</div><div id="status" class="status"></div><div id="problem" class="problem"></div><div id="notice" class="notice"></div></div>
+<div id="form"></div>
+</main><aside class="preview"><div class="sheet"><iframe id="preview" title="CV preview"></iframe><div class="guides"></div></div><div id="pagecount" class="pagecount"></div></aside></div><button class="viewtoggle" onclick="document.body.classList.toggle('show-preview');this.textContent=document.body.classList.contains('show-preview')?'✎ Back to editing':'👁 Show the CV';fitPreview()">👁 Show the CV</button><script id="initial" type="application/json">__INITIAL__</script><script src="/static/app.js"></script></body></html>
