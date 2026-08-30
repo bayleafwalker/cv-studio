@@ -487,8 +487,27 @@ STATIC_DIR = ROOT / "static"
 
 
 def openapi(base_url: str) -> dict:
+    entry_schema = {"type": "object", "required": ["title"], "properties": {
+        "title": {"type": "string"}, "organisation": {"type": "string"}, "dates": {"type": "string"},
+        "location": {"type": "string"}, "description": {"type": "string"},
+        "bullets": {"type": "array", "items": {"type": "string"}},
+        "visible": {"type": "boolean"}, "page_break_before": {"type": "boolean"}}}
     cv_schema = {"type": "object", "description": "A CV document. Use GET /api/schema for a complete example; keep every field name.",
-                 "required": ["template", "person", "contact", "sidebar_sections", "sections"]}
+                 "required": ["template", "person", "contact", "sidebar_sections", "sections"],
+                 "properties": {
+                     "template": {"type": "string", "description": "One of the installed template ids, e.g. classic-two-column, modern-single-column, plain-ats. Keep the current value unless asked."},
+                     "person": {"type": "object", "required": ["name"], "properties": {
+                         "name": {"type": "string"}, "headline": {"type": "string"}, "summary": {"type": "string"}}},
+                     "contact": {"type": "array", "items": {"type": "object", "properties": {
+                         "label": {"type": "string"}, "value": {"type": "string"}, "visible": {"type": "boolean"}}}},
+                     "sidebar_sections": {"type": "array", "items": {"type": "object", "properties": {
+                         "title": {"type": "string"}, "items": {"type": "array", "items": {"type": "string"}},
+                         "visible": {"type": "boolean"}, "page_break_before": {"type": "boolean"}}}},
+                     "sections": {"type": "array", "items": {"type": "object", "properties": {
+                         "type": {"type": "string", "description": "education, experience or projects"},
+                         "title": {"type": "string"}, "visible": {"type": "boolean"},
+                         "page_break_before": {"type": "boolean"},
+                         "entries": {"type": "array", "items": entry_schema}}}}}}
     profile_param = {"name": "profile", "in": "query", "required": True, "schema": {"type": "string"},
                      "description": "CV id from GET /api/profiles (for example 'my-cv' or 'Product engineer')."}
     return {
