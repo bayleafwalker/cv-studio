@@ -1,6 +1,6 @@
 [project]
 name = "local-cv-editor"
-version = "0.11.0"
+version = "0.11.1"
 description = "Local-only, template-based CV editor"
 requires-python = ">=3.11"
 dependencies = ["WeasyPrint>=68,<69"]
