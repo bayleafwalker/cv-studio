@@ -277,6 +277,42 @@ def token_person(token: str) -> str | None:
     return person if isinstance(person, str) and person in list_persons() else None
 
 
+OIDC_USERINFO = os.environ.get("CV_STUDIO_OIDC_USERINFO", "")  # e.g. https://auth.example/application/o/userinfo/
+_userinfo_cache: dict[str, tuple[float, str | None]] = {}
+
+
+def fetch_userinfo(token: str) -> dict | None:
+    """Ask the identity provider who a bearer token belongs to (None when it is not valid)."""
+    import urllib.request, urllib.error
+    request = urllib.request.Request(OIDC_USERINFO, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, ValueError, OSError):
+        return None
+
+
+def oidc_person(token: str, lookup=None) -> str | None:
+    """Map an OAuth access token to a person folder via the provider's userinfo; creates the folder on first use."""
+    import time
+    if not OIDC_USERINFO or not token:
+        return None
+    cached = _userinfo_cache.get(token)
+    if cached and cached[0] > time.time():
+        return cached[1]
+    info = (lookup or fetch_userinfo)(token)
+    person = None
+    if isinstance(info, dict):
+        name = str(info.get("preferred_username") or info.get("nickname") or str(info.get("email", "")).split("@")[0] or "").strip()
+        if name and PERSON_ID.fullmatch(name) and ".." not in name:
+            person_folder(name).joinpath("profiles").mkdir(parents=True, exist_ok=True)
+            person = name
+    _userinfo_cache[token] = (time.time() + (300 if person else 30), person)
+    if len(_userinfo_cache) > 500:
+        _userinfo_cache.clear()
+    return person
+
+
 def open_folder(path: Path) -> None:
     import subprocess, sys
     path.mkdir(parents=True, exist_ok=True)
@@ -428,7 +464,9 @@ def openapi(base_url: str) -> dict:
         "info": {"title": "CV Studio", "version": VERSION,
                  "description": "Read and update a person's CVs. Every CV is a JSON document rendered by CV Studio into a PDF; the person reviews it in the editor."},
         "servers": [{"url": base_url}],
-        "components": {"securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}}, "schemas": {"CV": cv_schema}},
+        "components": {"securitySchemes": {"bearer": {"type": "http", "scheme": "bearer",
+                       "description": "An OAuth access token from the household identity provider, or a token from tokens.json."}},
+                       "schemas": {"CV": cv_schema}},
         "security": [{"bearer": []}],
         "paths": {
             "/api/schema": {"get": {"operationId": "getExampleCV", "summary": "Complete example CV showing the JSON structure and available templates",
@@ -479,7 +517,8 @@ class Handler(BaseHTTPRequestHandler):
         if not PERSONS_MODE:
             return True
         auth = self.headers.get("Authorization", "")
-        person = token_person(auth[7:].strip()) if auth.lower().startswith("bearer ") else None
+        bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+        person = (token_person(bearer) or oidc_person(bearer)) if bearer else None
         if not person:
             candidate = self.cookie("cv_person")
             person = candidate if candidate and candidate in list_persons() else None

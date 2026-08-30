@@ -72,7 +72,19 @@ The same server runs as a container (`Dockerfile`, published to
 the browser picks a person once (a cookie remembers it) and agents identify
 with a bearer token listed in `/data/tokens.json` as `{"token": "Person"}`.
 `GET /api/openapi.json` describes the JSON API for ChatGPT Actions or an MCP
-client; `GET /api/schema` returns the example document. Nothing is stored
+client; `GET /api/schema` returns the example document.
+
+Agents should rather sign in as the person with **OAuth**: set
+`CV_STUDIO_OIDC_USERINFO` to the identity provider's userinfo endpoint
+(Authentik: `https://auth.example/application/o/userinfo/`). A bearer access
+token issued by that provider is looked up there and mapped to the person by
+`preferred_username`; the folder is created on first use. To connect a custom
+GPT: create an OAuth2 provider + application for CV Studio in Authentik
+(confidential client, redirect URI = the callback the GPT editor shows, scopes
+`openid profile email`), then in the GPT's Actions use Authentication = OAuth
+with Authentik's `authorize/` and `token/` URLs and the client id/secret. Note
+that ChatGPT's servers must be able to reach both CV Studio's API and the
+identity provider, so both need a public route (limit CV Studio's to `/api/`). Nothing is stored
 outside `/data`; PDFs are rendered with WeasyPrint inside the container.
 
 ```bash

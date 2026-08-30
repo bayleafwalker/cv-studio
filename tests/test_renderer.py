@@ -113,6 +113,15 @@ class RendererTests(unittest.TestCase):
                     self.assertTrue((server.person_folder("Anna") / "profiles" / "Anna's CV.local.json").exists())
                 finally:
                     server.CONTENT.reset(token)
+                server.OIDC_USERINFO = "https://auth.example/application/o/userinfo/"
+                calls = []
+                lookup = lambda token: calls.append(token) or ({"preferred_username": "Juha", "email": "j@example"} if token == "good" else None)
+                self.assertEqual(server.oidc_person("good", lookup), "Juha")
+                self.assertEqual(server.oidc_person("good", lookup), "Juha")  # cached
+                self.assertEqual(calls, ["good"])
+                self.assertTrue((server.person_folder("Juha") / "profiles").is_dir())
+                self.assertIsNone(server.oidc_person("bad", lookup))
+                server.OIDC_USERINFO = ""
                 spec = server.openapi("https://cv.example")
                 self.assertEqual(spec["servers"][0]["url"], "https://cv.example")
                 self.assertIn("/api/cv", spec["paths"])
