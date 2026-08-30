@@ -77,6 +77,25 @@ class RendererTests(unittest.TestCase):
             finally:
                 server.LOCAL_SOURCE, server.PROFILES_DIR = old_local, old_profiles
 
+    def test_rename_moves_the_file_and_links_are_clickable(self):
+        sample = load_cv("sample")
+        old_local, old_profiles = server.LOCAL_SOURCE, server.PROFILES_DIR
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            server.LOCAL_SOURCE, server.PROFILES_DIR = root / "cv.local.json", root / "profiles"
+            try:
+                server.save_cv(sample, "my-cv")
+                self.assertEqual(server.rename_cv("my-cv", "Product engineer"), "Product engineer")
+                self.assertFalse(server.LOCAL_SOURCE.exists())
+                self.assertEqual(load_cv("Product engineer")["person"]["name"], "Your Name")
+                with self.assertRaises(ValueError):
+                    server.rename_cv("sample", "x")
+            finally:
+                server.LOCAL_SOURCE, server.PROFILES_DIR = old_local, old_profiles
+        rendered = render_html(sample)
+        self.assertIn('href="mailto:your.name@example.com"', rendered)
+        self.assertIn('href="https://linkedin.com/in/yourname"', rendered)
+
     def test_preview_has_anchors_for_following_the_editor(self):
         rendered = render_html(load_cv("sample"))
         self.assertIn('data-cv="sections.1.entries.0"', rendered)

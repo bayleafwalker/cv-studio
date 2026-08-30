@@ -45,11 +45,15 @@ to ChatGPT and ask for the complete corrected file.
 ## Editing your CV
 
 1. At the top of the form, choose which **CV** to work on. **Make a copy of
-   this CV** creates a separate version for another job type.
+   this CV** creates a separate version for another job type; **Rename** and
+   **Delete this CV** do what they say.
 2. Choose a style: **Classic two-column** is compact; **Modern single-column**
    matches the usual published CV style.
 3. Replace the text in “About you”, “Contact details”, and the cards below.
-   Add achievements one per line. Changes are saved automatically.
+   Add achievements one per line. Use ▲ ▼ to reorder cards, **Remove** to drop
+   one (an **Undo** button appears for a moment), and the **Add …** buttons to
+   add contact details, sidebar blocks or entries. Changes are saved
+   automatically; e-mail and web addresses become clickable links in the PDF.
 4. The page on the right updates as you type and scrolls to the part you are
    editing. Red lines show where each A4 page ends. Use **Move up** and
    **Move down** to choose the section order. If something sits awkwardly

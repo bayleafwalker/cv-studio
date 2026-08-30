@@ -164,6 +164,23 @@ def delete_cv(profile: str) -> None:
     path.unlink()
 
 
+def rename_cv(profile: str, name: str) -> str:
+    if profile == "sample":
+        raise ValueError("The example CV cannot be renamed. Make a copy of it first.")
+    source = profile_path(profile)
+    if not source.exists():
+        raise ValueError("That CV file is already gone.")
+    target_id = new_profile_id(name)
+    if target_id in {"sample", "my-cv"} or target_id in {item["id"] for item in scan_profiles()} and target_id != profile:
+        raise ValueError("Another CV already has that name.")
+    if target_id == profile:
+        return profile
+    target = PROFILES_DIR / f"{target_id}.local.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(source, target)
+    return target_id
+
+
 def new_profile_id(name: str) -> str:
     requested = re.sub(r"\.(local\.)?json$", "", str(name).strip(), flags=re.I)
     profile = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", requested).strip(" .-")[:100]
@@ -245,11 +262,23 @@ def render_section(section: dict, i: int) -> str:
     return f'<section class="main-section{breaker}" data-cv="sections.{i}"><h2>{text(section.get("title"))}</h2>{body}</section>'
 
 
+def contact_value(item: dict) -> str:
+    """Make e-mail addresses and web addresses clickable in the HTML and PDF."""
+    value = str(item.get("value") or "").strip()
+    label = str(item.get("label") or "").lower()
+    if "@" in value and " " not in value:
+        return f'<a href="mailto:{text(value)}">{text(value)}</a>'
+    if re.match(r"^(https?://|www\.)", value, re.I) or re.match(r"^[\w.-]+\.[a-z]{2,}(/\S*)?$", value, re.I) and label not in {"phone", "location", "address"}:
+        href = value if value.lower().startswith("http") else "https://" + value
+        return f'<a href="{text(href)}">{text(value)}</a>'
+    return text(value)
+
+
 def render_parts(cv: dict) -> dict[str, str]:
     """Create content fragments shared by every presentation template."""
     person = cv["person"]
     contact = "".join(
-        f'<div class="contact-item" data-cv="contact.{i}"><span class="contact-label">{text(item.get("label"))}</span><span class="contact-value{" contact-link" if str(item.get("label", "")).lower() in {"linkedin", "website", "portfolio"} else ""}">{text(item.get("value"))}</span></div>'
+        f'<div class="contact-item" data-cv="contact.{i}"><span class="contact-label">{text(item.get("label"))}</span><span class="contact-value{" contact-link" if str(item.get("label", "")).lower() in {"linkedin", "website", "portfolio"} else ""}">{contact_value(item)}</span></div>'
         for i, item in enumerate(cv["contact"]) if isinstance(item, dict) and shown(item) and item.get("value")
     )
     side = "".join(
@@ -292,7 +321,7 @@ def render_html(cv: dict) -> str:
         raise ValueError(f"Template {cv['template']!r} has no renderer.")
     css = template["css_path"].read_text(encoding="utf-8")
     parts = render_parts(cv)
-    return f'<!doctype html><html><head><meta charset="utf-8"><title>{parts["name"]} — CV</title><style>{css}</style></head><body>{renderer(parts)}</body></html>'
+    return f'<!doctype html><html><head><meta charset="utf-8"><title>{parts["name"]} — CV</title><meta name="author" content="{parts["name"]}"><style>{css}</style></head><body>{renderer(parts)}</body></html>'
 
 
 PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box-shadow:none!important;width:auto!important;min-height:0!important}.page-break,.pushed{padding-top:var(--push,0)!important}[data-cv]{position:relative}.cv-focus::before,.cv-split::before{content:"";position:absolute;inset:calc(var(--push,0px) - 3px) -3px -3px -3px;border:2px solid #147084;border-radius:2px;pointer-events:none}.cv-split::before{border-style:dashed;border-color:#d6626a}.cv-handle{position:absolute;top:calc(var(--push,0px) - 2pt);right:0;display:none;border:0;border-radius:4px;padding:3px 7px;background:#147084;color:#fff;font:600 10px system-ui,sans-serif;cursor:pointer;z-index:2}.cv-handle.on{background:#9a3940}[data-cv]:hover>.cv-handle,.cv-split>.cv-handle{display:block}@media print{.page-break,.pushed{padding-top:0!important}.cv-focus::before,.cv-split::before{display:none}.cv-handle{display:none!important}}</style>"
@@ -317,6 +346,7 @@ button{border:0;border-radius:5px;padding:9px 12px;background:#147084;color:whit
 button.secondary{background:#60747e}
 button.danger{background:#9a3940}
 button.remove{background:#9a3940;padding:5px 8px;float:right}
+.mini{float:right;margin-right:6px}.mini button{padding:4px 7px;margin-left:3px}
 button:disabled{opacity:.5;cursor:default}
 .toggle{display:flex;align-items:center;gap:6px;font-weight:500}
 .toggle input{width:auto}
@@ -371,8 +401,11 @@ function visible(item, path) {
 function pageBreak(item, path) {
   return `<label class="toggle"><input type="checkbox" data-path="${path}.page_break_before" ${item.page_break_before ? 'checked' : ''}> Start on a new page</label>`;
 }
-function entry(e, path) {
-  return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${visible(e, path)}${pageBreak(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label for="${fid(path + '.bullets')}">Achievement bullets (one per line)</label><textarea id="${fid(path + '.bullets')}" data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
+function mover(path, i, n) {
+  return `<span class="mini"><button class="secondary" data-move="${path},${i},-1" ${i === 0 ? 'disabled' : ''} title="Move up">▲</button><button class="secondary" data-move="${path},${i},1" ${i === n - 1 ? 'disabled' : ''} title="Move down">▼</button></span>`;
+}
+function entry(e, path, i, n) {
+  return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${mover(path.replace(/\.\d+$/, ''), i, n)}${visible(e, path)}${pageBreak(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label for="${fid(path + '.bullets')}">Achievement bullets (one per line)</label><textarea id="${fid(path + '.bullets')}" data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
 }
 function profileOptions() {
   return profiles.map(p => `<option value="${esc(p.id)}" ${p.id === profile ? 'selected' : ''}>${p.error ? '⚠ ' : ''}${esc(p.label)}${p.error ? ' — cannot be opened' : ''}</option>`).join('');
@@ -386,15 +419,15 @@ function render() {
   const isSample = profile === 'sample';
   form.innerHTML = `<h2>Which CV</h2><label for="f-profile">Open CV</label><select id="f-profile" data-profile>${profileOptions()}</select>
 <p class="hint">${isSample ? 'This is the example. Your edits are saved as <b>My CV</b> automatically.' : `Saved in <code>${esc((profiles.find(p => p.id === profile) || {}).file || '')}</code>.`}</p>
-<div class="actions"><button class="secondary" onclick="newProfile()">Make a copy of this CV</button><button class="danger" onclick="deleteProfile()" ${isSample ? 'disabled' : ''}>Delete this CV</button></div>
+<div class="actions"><button class="secondary" onclick="newProfile()">Make a copy of this CV</button><button class="secondary" onclick="renameProfile()" ${isSample ? 'disabled' : ''}>Rename</button><button class="danger" onclick="deleteProfile()" ${isSample ? 'disabled' : ''}>Delete this CV</button></div>
 <div class="card"><b>Your CV files are here:</b><br><code>${esc(meta.folder)}</code><div class="actions" style="margin-bottom:0"><button class="secondary" onclick="openFolder()">Open this folder</button></div><p class="hint" style="margin:8px 0 0">Any <code>.json</code> file you put in this folder shows up in the <b>Open CV</b> list within a few seconds. The file name becomes the CV name.</p></div>
 <p class="hint">Want ChatGPT to draft one? Click <b>Copy example for ChatGPT</b>, paste it into the chat, save the answer as a <code>.json</code> file, then click <b>Open a CV file…</b> (or drop the file onto this window, or put it in the CV folder).</p>
 <h2>Document style</h2><label for="f-template">Template</label><select id="f-template" data-template>${options}</select><p class="hint">The style changes presentation only; your content stays the same.</p>
 <h2>About you</h2>${field('Full name', cv.person.name, 'person.name')}${field('Headline', cv.person.headline, 'person.headline')}${field('Short introduction', cv.person.summary, 'person.summary', true)}
-<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card">${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}
-<h2>Sidebar</h2>${cv.sidebar_sections.map((x, i) => `<div class="card">${visible(x, 'sidebar_sections.' + i)}${pageBreak(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label for="${fid('sidebar_sections.' + i + '.items')}">Items (one per line)</label><textarea id="${fid('sidebar_sections.' + i + '.items')}" data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}
+<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card"><button class="remove" data-remove="contact.${i}">Remove</button>${mover('contact', i, cv.contact.length)}${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}<button class="secondary" data-add-contact>Add contact detail</button>
+<h2>Sidebar</h2><p class="hint">Short lists such as skills and languages. In the modern style these appear as compact lines under the introduction.</p>${cv.sidebar_sections.map((x, i) => `<div class="card"><button class="remove" data-remove="sidebar_sections.${i}">Remove</button>${mover('sidebar_sections', i, cv.sidebar_sections.length)}${visible(x, 'sidebar_sections.' + i)}${pageBreak(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label for="${fid('sidebar_sections.' + i + '.items')}">Items (one per line)</label><textarea id="${fid('sidebar_sections.' + i + '.items')}" data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}<button class="secondary" data-add-sidebar>Add sidebar block</button>
 <h2>Main CV sections</h2><p class="hint">Move whole sections to set their order. Any section, entry or sidebar block can start on a fresh A4 page; you can also hover an entry in the preview and click <b>Move to next page</b>.</p>
-${cv.sections.map((s, i) => `<section class="card"><div class="actions"><button class="secondary" data-section-move="${i},-1" ${i === 0 ? 'disabled' : ''}>Move up</button><button class="secondary" data-section-move="${i},1" ${i === cv.sections.length - 1 ? 'disabled' : ''}>Move down</button></div>${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
+${cv.sections.map((s, i) => `<section class="card"><div class="actions"><button class="secondary" data-section-move="${i},-1" ${i === 0 ? 'disabled' : ''}>Move up</button><button class="secondary" data-section-move="${i},1" ${i === cv.sections.length - 1 ? 'disabled' : ''}>Move down</button></div>${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`, j, s.entries.length)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
 <p class="hint">CV Studio ${esc(meta.version)}</p>`;
   bind();
 }
@@ -406,11 +439,17 @@ function bind() {
   form.querySelector('[data-profile]').onchange = e => loadProfile(e.target.value);
   form.querySelectorAll('[data-bullets]').forEach(el => el.oninput = () => { get(el.dataset.bullets).bullets = el.value.split('\n').filter(Boolean); changed(); });
   form.querySelectorAll('[data-items]').forEach(el => el.oninput = () => { get(el.dataset.items).items = el.value.split('\n').filter(Boolean); changed(); });
-  form.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { const p = b.dataset.remove.split('.'), idx = +p.pop(); get(p.join('.')).splice(idx, 1); render(); changed(); });
+  form.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { const p = b.dataset.remove.split('.'), idx = +p.pop(), list = get(p.join('.')), [item] = list.splice(idx, 1); undoStack.push({list: p.join('.'), idx, item}); render(); changed(); tell(`Removed “${esc(item.title || item.label || item.value || 'item')}”.<button onclick="undo()">Undo</button>`); });
+  form.querySelectorAll('[data-move]').forEach(b => b.onclick = () => { const [path, i, d] = b.dataset.move.split(','), list = get(path), from = +i, to = from + +d; if (to < 0 || to >= list.length) return; [list[from], list[to]] = [list[to], list[from]]; render(); changed(); form.querySelector(`[data-move="${path},${to},${d}"]`)?.focus(); });
+  const addC = form.querySelector('[data-add-contact]'); if (addC) addC.onclick = () => { cv.contact.push({label: 'Website', value: '', visible: true}); render(); changed(); form.querySelector(`[data-path="contact.${cv.contact.length - 1}.value"]`).focus(); };
+  const addS = form.querySelector('[data-add-sidebar]'); if (addS) addS.onclick = () => { cv.sidebar_sections.push({title: 'New block', visible: true, items: []}); render(); changed(); form.querySelector(`[data-path="sidebar_sections.${cv.sidebar_sections.length - 1}.title"]`).select(); };
   form.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { cv.sections[+b.dataset.add].entries.push({title: 'New entry', organisation: '', dates: '', location: '', description: '', bullets: [], visible: true}); render(); changed(); });
   form.querySelectorAll('[data-section-move]').forEach(b => b.onclick = () => { const [i, d] = b.dataset.sectionMove.split(',').map(Number), to = i + d; if (to < 0 || to >= cv.sections.length) return; [cv.sections[i], cv.sections[to]] = [cv.sections[to], cv.sections[i]]; render(); changed(); });
 }
 
+const undoStack = [];
+function undo() { const u = undoStack.pop(); if (!u) return; get(u.list).splice(u.idx, 0, u.item); render(); changed(); hush(); ok('Put back.'); }
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && undoStack.length) { e.preventDefault(); undo(); } });
 // Editing marks the CV dirty and schedules a save; re-rendering the form never does (that caused an endless save/redraw loop).
 let previewTimer, saveTimer, dirty = false;
 function changed() { dirty = true; status.textContent = 'Saving…'; clearTimeout(saveTimer); saveTimer = setTimeout(save, 700); updatePreview(); }
@@ -527,7 +566,7 @@ async function save() {
   profile = d.profile;
   await reloadProfiles();
   if (switched) render();
-  ok('Saved on this computer.');
+  ok('Saved on this computer at ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) + '.');
 }
 async function createProfile(name, data) {
   const r = await fetch('/api/profiles', json({name, cv: data}));
@@ -543,6 +582,15 @@ async function newProfile() {
   if (!name) return;
   if (dirty) await save();
   if (await createProfile(name, cv)) ok('Copy saved. You are now editing the copy.');
+}
+async function renameProfile() {
+  const info = profiles.find(p => p.id === profile) || {};
+  const name = prompt('New name for this CV', info.label || '');
+  if (!name || name === info.label) return;
+  if (dirty) await save();
+  const r = await fetch('/api/rename', json({profile, name}));
+  if (!r.ok) { fail(await r.text()); return; }
+  profile = (await r.json()).profile; await reloadProfiles(); render(); ok('Renamed.');
 }
 async function deleteProfile() {
   const info = profiles.find(p => p.id === profile) || {};
@@ -689,6 +737,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.plain(f"The folder is {PROFILES_DIR} but it could not be opened automatically: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
         try: cv = self.read_json()
         except json.JSONDecodeError as exc: return self.plain(f"This is not valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}.", HTTPStatus.BAD_REQUEST)
+        if route == "/api/rename":
+            try:
+                renamed = rename_cv(str(cv.get("profile", "")), str(cv.get("name", "")))
+                return self.send(json.dumps({"profile": renamed}).encode(), "application/json")
+            except (AttributeError, ValueError, OSError) as exc:
+                return self.plain(str(exc), HTTPStatus.BAD_REQUEST)
         if route == "/api/profiles":
             try:
                 profile = new_profile_id(cv.get("name", ""))
