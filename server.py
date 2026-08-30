@@ -19,6 +19,10 @@ SAMPLE_SOURCE = ROOT / "content" / "cv.sample.json"
 CONTENT_DIR = Path(os.environ.get("CV_STUDIO_CONTENT") or ROOT / "content")  # personal files; tests point this elsewhere
 PERSONS_MODE = os.environ.get("CV_STUDIO_PERSONS", "") not in ("", "0", "false")  # hosted: one folder per person under persons/
 PERSON_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$")
+# Requests that arrive through a public route carry this header (set by the gateway, never by clients):
+# they may only use the agent API, with a bearer token; cookies and the editor are refused.
+PUBLIC_HEADER = os.environ.get("CV_STUDIO_PUBLIC_HEADER", "X-CV-Studio-Public")
+PUBLIC_PATHS = {"/api/openapi.json", "/api/schema", "/api/profiles", "/api/cv"}
 import contextvars
 CONTENT: contextvars.ContextVar[Path] = contextvars.ContextVar("content", default=CONTENT_DIR)
 
@@ -497,8 +501,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status); self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         if filename: self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer"); self.send_header("Cache-Control", "no-store")
         for name, value in getattr(self, "extra_headers", []): self.send_header(name, value)
         self.end_headers(); self.wfile.write(body)
+
+    def is_public(self) -> bool:
+        return self.headers.get(PUBLIC_HEADER, "").strip() == "1"
+
+    def public_guard(self, route: str) -> bool:
+        """On a public request only the agent API is served; anything else is not found."""
+        if self.is_public() and route not in PUBLIC_PATHS:
+            self.extra_headers = []; self.plain("Not found", HTTPStatus.NOT_FOUND); return True
+        return False
 
     def cookie(self, name: str) -> str | None:
         from http.cookies import SimpleCookie
@@ -515,11 +530,11 @@ class Handler(BaseHTTPRequestHandler):
         self.person = None
         CONTENT.set(CONTENT_DIR)
         if not PERSONS_MODE:
-            return True
+            return not self.is_public()  # a public route only makes sense with per-person folders
         auth = self.headers.get("Authorization", "")
         bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
         person = (token_person(bearer) or oidc_person(bearer)) if bearer else None
-        if not person:
+        if not person and not self.is_public():
             candidate = self.cookie("cv_person")
             person = candidate if candidate and candidate in list_persons() else None
         if not person:
@@ -545,6 +560,7 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
 
     def do_GET(self):
         parsed = urlparse(self.path); route = parsed.path
+        if self.public_guard(route): return
         if route in ("/health", "/ready"): self.extra_headers = []; return self.plain("ok")
         if route.startswith("/static/"): return self.static(route)
         if route == "/api/openapi.json":
@@ -553,10 +569,9 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
             scheme = self.headers.get("X-Forwarded-Proto", "http")
             return self.send(json.dumps(openapi(f"{scheme}://{host}"), indent=2).encode(), "application/json")
         if route == "/api/schema": self.extra_headers = []; return self.send(SAMPLE_SOURCE.read_bytes(), "application/json")
-        if route == "/api/persons": self.extra_headers = []; return self.send(json.dumps(list_persons()).encode(), "application/json")
         if not self.resolve_person():
             if route == "/": return self.send(self.chooser_page(), "text/html; charset=utf-8")
-            return self.plain("Choose a person first (open the site in a browser) or send a bearer token.", HTTPStatus.UNAUTHORIZED)
+            return self.plain("Sign in first: send an OAuth bearer token, or open the site in a browser and choose a person.", HTTPStatus.UNAUTHORIZED)
         if route == "/":
             profile = default_profile()
             initial_cv = load_cv(profile)
@@ -589,6 +604,7 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
 
     def do_POST(self):
         route = urlparse(self.path).path
+        if self.public_guard(route): return
         if route in ("/api/person", "/api/persons"):
             self.extra_headers = []
             try:
@@ -603,7 +619,7 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
                 return self.plain(str(exc) or "Give a name.", HTTPStatus.BAD_REQUEST)
         if route == "/api/leave":
             self.extra_headers = []; self.set_person_cookie(None); return self.plain("ok")
-        if not self.resolve_person(): return self.plain("Choose a person first or send a bearer token.", HTTPStatus.UNAUTHORIZED)
+        if not self.resolve_person(): return self.plain("Sign in first: send an OAuth bearer token, or open the site in a browser and choose a person.", HTTPStatus.UNAUTHORIZED)
         if route == "/api/open-folder":
             if PERSONS_MODE: return self.plain(f"On the server the files are in {profiles_dir()}; download a backup instead.", HTTPStatus.BAD_REQUEST)
             try:
@@ -643,7 +659,8 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
 
     def do_PUT(self):
         parsed = urlparse(self.path)
-        if not self.resolve_person(): return self.plain("Choose a person first or send a bearer token.", HTTPStatus.UNAUTHORIZED)
+        if self.public_guard(parsed.path): return
+        if not self.resolve_person(): return self.plain("Sign in first: send an OAuth bearer token, or open the site in a browser and choose a person.", HTTPStatus.UNAUTHORIZED)
         if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
         try: cv = self.read_json(); errors = validate(cv)
         except json.JSONDecodeError: errors = ["The submitted CV is not valid data."]
@@ -657,7 +674,8 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        if not self.resolve_person(): return self.plain("Choose a person first or send a bearer token.", HTTPStatus.UNAUTHORIZED)
+        if self.public_guard(parsed.path): return
+        if not self.resolve_person(): return self.plain("Sign in first: send an OAuth bearer token, or open the site in a browser and choose a person.", HTTPStatus.UNAUTHORIZED)
         if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
         try:
             delete_cv(parse_qs(parsed.query).get("profile", [""])[0]); return self.plain("Deleted")

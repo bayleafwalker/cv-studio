@@ -84,7 +84,12 @@ GPT: create an OAuth2 provider + application for CV Studio in Authentik
 `openid profile email`), then in the GPT's Actions use Authentication = OAuth
 with Authentik's `authorize/` and `token/` URLs and the client id/secret. Note
 that ChatGPT's servers must be able to reach both CV Studio's API and the
-identity provider, so both need a public route (limit CV Studio's to `/api/`). Nothing is stored
+identity provider, so both need a public route. A public route must add the
+header `X-CV-Studio-Public: 1` (name configurable with `CV_STUDIO_PUBLIC_HEADER`)
+and strip client cookies: with that header the server serves only
+`/api/openapi.json`, `/api/schema`, `/api/profiles` and `/api/cv`, requires a
+bearer token, ignores the person cookie, and answers 404 to everything else
+(the editor is never public). Nothing is stored
 outside `/data`; PDFs are rendered with WeasyPrint inside the container.
 
 ```bash

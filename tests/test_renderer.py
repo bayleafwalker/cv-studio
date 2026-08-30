@@ -128,6 +128,37 @@ class RendererTests(unittest.TestCase):
             finally:
                 server.CONTENT_DIR = old_dir
 
+    def test_public_requests_only_get_the_agent_api_with_a_bearer(self):
+        import http.client, threading
+        from http.server import ThreadingHTTPServer
+        old_dir, old_mode = server.CONTENT_DIR, server.PERSONS_MODE
+        with tempfile.TemporaryDirectory() as directory:
+            server.CONTENT_DIR, server.PERSONS_MODE = Path(directory), True
+            server.person_folder("Anna").joinpath("profiles").mkdir(parents=True)
+            (server.CONTENT_DIR / "tokens.json").write_text('{"tok": "Anna"}', encoding="utf-8")
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+            threading.Thread(target=httpd.serve_forever, daemon=True).start()
+            try:
+                def call(method, path, headers=None, body=None):
+                    c = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+                    c.request(method, path, body=body, headers=headers or {}); r = c.getresponse(); data = r.read(); c.close()
+                    return r.status, data
+                pub = {"X-CV-Studio-Public": "1"}
+                self.assertEqual(call("GET", "/", pub)[0], 404)                       # editor is never public
+                self.assertEqual(call("GET", "/static/app.js", pub)[0], 404)
+                self.assertEqual(call("POST", "/api/persons", pub, '{"name":"X"}')[0], 404)
+                self.assertIn(call("GET", "/api/persons", {})[0], (401, 404))           # anonymous listing removed
+                self.assertEqual(call("GET", "/api/schema", pub)[0], 200)
+                self.assertEqual(call("GET", "/api/profiles", pub)[0], 401)            # bearer required
+                self.assertEqual(call("GET", "/api/profiles", {**pub, "Cookie": "cv_person=Anna"})[0], 401)  # cookie ignored
+                status, data = call("GET", "/api/profiles", {**pub, "Authorization": "Bearer tok"})
+                self.assertEqual(status, 200); self.assertIn(b"Example CV", data)
+                self.assertEqual(call("GET", "/api/profiles", {"Cookie": "cv_person=Anna"})[0], 200)  # internal cookie still works
+                self.assertEqual(call("GET", "/", {})[0], 200)                        # chooser page internally
+            finally:
+                httpd.shutdown(); httpd.server_close()
+                server.CONTENT_DIR, server.PERSONS_MODE = old_dir, old_mode
+
     def test_preview_has_anchors_for_following_the_editor(self):
         rendered = render_html(load_cv("sample"))
         self.assertIn('data-cv="sections.1.entries.0"', rendered)
