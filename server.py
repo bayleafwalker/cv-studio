@@ -218,7 +218,7 @@ def shown(item: dict) -> bool:
     return item.get("visible", True) is not False
 
 
-def render_entry(entry: dict, anchor: str = "") -> str:
+def render_entry(entry: dict, anchor: str = "", hoisted: bool = False) -> str:
     if not shown(entry):
         return ""
     title = text(entry.get("title"))
@@ -232,8 +232,17 @@ def render_entry(entry: dict, anchor: str = "") -> str:
     bullets = "".join(f"<li>{text(item)}</li>" for item in entry.get("bullets", []) if str(item).strip())
     bullet_html = f"<ul>{bullets}</ul>" if bullets else ""
     organisation_html = f'<p class="organisation">{organisation}</p>' if organisation else ""
-    breaker = " page-break" if entry.get("page_break_before") else ""
+    breaker = " page-break" if entry.get("page_break_before") and not hoisted else ""
     return f'<article class="entry{breaker}" data-cv="{anchor}"><h3 class="entry-title">{title}</h3>{organisation_html}{meta}{description}{bullet_html}</article>'
+
+
+def render_section(section: dict, i: int) -> str:
+    entries = [(j, e) for j, e in enumerate(section.get("entries", [])) if isinstance(e, dict) and shown(e)]
+    # A break on the first entry means "this section starts a page": hoist it so the heading is not orphaned.
+    hoisted = bool(entries) and bool(entries[0][1].get("page_break_before"))
+    breaker = " page-break" if section.get("page_break_before") or hoisted else ""
+    body = "".join(render_entry(e, f"sections.{i}.entries.{j}", hoisted=(j == entries[0][0] and hoisted)) for j, e in entries)
+    return f'<section class="main-section{breaker}" data-cv="sections.{i}"><h2>{text(section.get("title"))}</h2>{body}</section>'
 
 
 def render_parts(cv: dict) -> dict[str, str]:
@@ -249,12 +258,7 @@ def render_parts(cv: dict) -> dict[str, str]:
         "</div></section>"
         for i, section in enumerate(cv["sidebar_sections"]) if isinstance(section, dict) and shown(section)
     )
-    sections = "".join(
-        f'<section class="main-section{" page-break" if section.get("page_break_before") else ""}" data-cv="sections.{i}"><h2>{text(section.get("title"))}</h2>' +
-        "".join(render_entry(entry, f"sections.{i}.entries.{j}") for j, entry in enumerate(section.get("entries", [])) if isinstance(entry, dict)) +
-        "</section>"
-        for i, section in enumerate(cv["sections"]) if isinstance(section, dict) and shown(section)
-    )
+    sections = "".join(render_section(section, i) for i, section in enumerate(cv["sections"]) if isinstance(section, dict) and shown(section))
     return {"name": text(person["name"]), "headline": text(person.get("headline")),
             "summary": text(person.get("summary")), "contact": contact, "sidebar": side,
             "sections": sections}
