@@ -4,8 +4,24 @@
   "renderer": "classic",
   "page": "A4",
   "regions": {
-    "sidebar": ["contact", "sidebar_sections"],
-    "main": ["person", "sections"]
+    "sidebar": [
+      "contact",
+      "sidebar_sections"
+    ],
+    "main": [
+      "person",
+      "sections"
+    ]
   },
-  "supported_section_types": ["education", "experience", "projects"]
+  "supported_section_types": [
+    "education",
+    "experience",
+    "projects"
+  ],
+  "margins_mm": {
+    "top": 15,
+    "right": 0,
+    "bottom": 15,
+    "left": 0
+  }
 }

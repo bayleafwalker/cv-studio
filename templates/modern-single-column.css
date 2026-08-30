@@ -9,7 +9,7 @@ h1 { margin: 0 0 4pt; font-size: 24pt; line-height: 1; color: #263944; }
 .contact-item { margin: 0; display: inline; }.contact-label { display: none; }.contact-value::after { content: " |"; color: #97a9b1; padding-left: 5pt; }.contact-item:last-child .contact-value::after { content: ""; }
 .contact-link { overflow-wrap: anywhere; }
 .summary { margin: 0 0 7pt; }
-.sidebar-section { display: none; }
+.skills { margin: 0 0 6pt; } .sidebar-section { margin: 0 0 2.5pt; break-inside: avoid; } .sidebar-section h2 { display: inline; margin: 0 4pt 0 0; padding: 0; border: 0; font-size: 8.4pt; letter-spacing: .1pt; } .tags { display: inline; } .tag::after { content: " · "; color: #97a9b1; } .tag:last-child::after { content: ""; }
 .main-section { margin: 8pt 0 0; }.main-section.page-break { break-before: page; margin-top: 0; }.entry.page-break, .sidebar-section.page-break { break-before: page; }
 h2 { margin: 0 0 5pt; padding-bottom: 3.2pt; border-bottom: .75pt solid #b9cbd2; color: #147084; font-size: 10.4pt; line-height: 1.1; letter-spacing: .15pt; text-transform: uppercase; break-after: avoid; }
 .entry { margin: 0 0 5pt; }.entry-title { margin: 0; color: #263944; font-size: 10pt; line-height: 1.2; font-weight: 700; }.organisation { margin: 1pt 0; color: #62737d; font-size: 8.35pt; }.entry-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2pt 10pt; color: #62737d; font-size: 8.5pt; }.entry-description { margin: 2pt 0; }ul { margin: 2pt 0 0 11.5pt; padding: 0; }li { margin: 0 0 1.4pt; break-inside: avoid; }.entry { break-inside: avoid; }

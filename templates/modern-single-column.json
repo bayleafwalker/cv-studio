@@ -3,6 +3,22 @@
   "label": "Modern single-column",
   "renderer": "modern",
   "page": "A4",
-  "regions": {"main": ["person", "contact", "sections"]},
-  "supported_section_types": ["education", "experience", "projects"]
+  "regions": {
+    "main": [
+      "person",
+      "contact",
+      "sections"
+    ]
+  },
+  "supported_section_types": [
+    "education",
+    "experience",
+    "projects"
+  ],
+  "margins_mm": {
+    "top": 14,
+    "right": 15.5,
+    "bottom": 14,
+    "left": 15.5
+  }
 }

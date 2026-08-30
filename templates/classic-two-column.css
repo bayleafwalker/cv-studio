@@ -1,11 +1,11 @@
-@page { size: A4; margin: 0; }
+@page { size: A4; margin: 15mm 0; }
 * { box-sizing: border-box; }
 html { background: #fff; }
 body { background: linear-gradient(to right, #fafafa 31%, #fff 31%); }
 body { margin: 0; color: #333; font-family: Arial, Helvetica, sans-serif; font-size: 9.2pt; line-height: 1.35; }
-.cv { display: grid; grid-template-columns: 31% 69%; min-height: 297mm; }
-.sidebar { padding: 23mm 8mm 20mm 14mm; overflow-wrap: anywhere; }
-.main { padding: 21mm 16mm 19mm 12mm; overflow-wrap: break-word; }
+.cv { display: grid; grid-template-columns: 31% 69%; min-height: 267mm; }
+.sidebar { padding: 8mm 8mm 6mm 14mm; overflow-wrap: anywhere; }
+.main { padding: 6mm 16mm 4mm 12mm; overflow-wrap: break-word; }
 h1 { margin: 0 0 3pt; color: #222; font-size: 25pt; font-weight: 400; letter-spacing: -.4pt; }
 .headline { margin: 0 0 8pt; font-size: 11pt; color: #555; }
 .summary { margin: 0 0 16pt; max-width: 95%; color: #444; }
@@ -30,4 +30,4 @@ h1 { margin: 0 0 3pt; color: #222; font-size: 25pt; font-weight: 400; letter-spa
 .entry-description { margin: 0 0 4pt; }
 ul { margin: 3pt 0 0 13pt; padding: 0; }
 li { margin: 0 0 2pt; }
-@media screen { html { background: #e8ecee; } body { margin: 16px auto; width: 210mm; min-height: 297mm; box-shadow: 0 2px 16px #9aa3a6; } }
+@media screen { html { background: #e8ecee; } body { margin: 16px auto; width: 210mm; min-height: 297mm; padding: 15mm 0; box-shadow: 0 2px 16px #9aa3a6; } }
