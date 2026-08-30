@@ -22,7 +22,11 @@ PERSON_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$")
 # Requests that arrive through a public route carry this header (set by the gateway, never by clients):
 # they may only use the agent API, with a bearer token; cookies and the editor are refused.
 PUBLIC_HEADER = os.environ.get("CV_STUDIO_PUBLIC_HEADER", "X-CV-Studio-Public")
-PUBLIC_PATHS = {"/api/openapi.json", "/api/schema", "/api/profiles", "/api/cv"}
+# Method-aware: a public agent may read everything, create/replace CVs, but never delete (C2 in the
+# 2026-08-30 pre-cutover review) — deletion stays a decision for a person in the editor.
+PUBLIC_ALLOW = {("GET", "/api/openapi.json"), ("GET", "/api/schema"),
+                ("GET", "/api/profiles"), ("POST", "/api/profiles"),
+                ("GET", "/api/cv"), ("PUT", "/api/cv")}
 import contextvars
 CONTENT: contextvars.ContextVar[Path] = contextvars.ContextVar("content", default=CONTENT_DIR)
 
@@ -282,6 +286,27 @@ def token_person(token: str) -> str | None:
 
 
 OIDC_USERINFO = os.environ.get("CV_STUDIO_OIDC_USERINFO", "")  # e.g. https://auth.example/application/o/userinfo/
+# When set, a token must also pass token introspection for THIS client (audience check): any other
+# application's Authentik token is refused (C1 in the 2026-08-30 pre-cutover review).
+OIDC_INTROSPECT = os.environ.get("CV_STUDIO_OIDC_INTROSPECT", "")
+OIDC_CLIENT_ID = os.environ.get("CV_STUDIO_OIDC_CLIENT_ID", "")
+OIDC_CLIENT_SECRET = os.environ.get("CV_STUDIO_OIDC_CLIENT_SECRET", "")
+
+
+def introspect_ok(token: str) -> bool:
+    """True when the identity provider says this token is active and was issued to our client."""
+    import base64, urllib.parse, urllib.request, urllib.error
+    body = urllib.parse.urlencode({"token": token}).encode()
+    basic = base64.b64encode(f"{OIDC_CLIENT_ID}:{OIDC_CLIENT_SECRET}".encode()).decode()
+    request = urllib.request.Request(OIDC_INTROSPECT, data=body, headers={
+        "Authorization": f"Basic {basic}", "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, ValueError, OSError):
+        return False
+    return bool(data.get("active")) and data.get("client_id") in (OIDC_CLIENT_ID, None) and (
+        data.get("client_id") is not None or OIDC_CLIENT_ID == "")
 _userinfo_cache: dict[str, tuple[float, str | None]] = {}
 
 
@@ -296,7 +321,7 @@ def fetch_userinfo(token: str) -> dict | None:
         return None
 
 
-def oidc_person(token: str, lookup=None) -> str | None:
+def oidc_person(token: str, lookup=None, check=None) -> str | None:
     """Map an OAuth access token to a person folder via the provider's userinfo; creates the folder on first use."""
     import time
     if not OIDC_USERINFO or not token:
@@ -304,8 +329,11 @@ def oidc_person(token: str, lookup=None) -> str | None:
     cached = _userinfo_cache.get(token)
     if cached and cached[0] > time.time():
         return cached[1]
-    info = (lookup or fetch_userinfo)(token)
     person = None
+    if OIDC_INTROSPECT and not (check or introspect_ok)(token):
+        info = None
+    else:
+        info = (lookup or fetch_userinfo)(token)
     if isinstance(info, dict):
         name = str(info.get("preferred_username") or info.get("nickname") or str(info.get("email", "")).split("@")[0] or "").strip()
         if name and PERSON_ID.fullmatch(name) and ".." not in name:
@@ -506,14 +534,25 @@ class Handler(BaseHTTPRequestHandler):
         for name, value in getattr(self, "extra_headers", []): self.send_header(name, value)
         self.end_headers(); self.wfile.write(body)
 
+    server_version = "CVStudio"  # no Python/BaseHTTP version leak
+    sys_version = ""
+
     def is_public(self) -> bool:
         return self.headers.get(PUBLIC_HEADER, "").strip() == "1"
 
     def public_guard(self, route: str) -> bool:
-        """On a public request only the agent API is served; anything else is not found."""
-        if self.is_public() and route not in PUBLIC_PATHS:
+        """On a public request only the allow-listed method+path pairs are served; anything else is not found."""
+        if self.is_public() and (self.command, route) not in PUBLIC_ALLOW:
             self.extra_headers = []; self.plain("Not found", HTTPStatus.NOT_FOUND); return True
         return False
+
+    def log_message(self, *_):  # quiet for local use; public requests are logged in send()
+        pass
+
+    def audit(self, status: int):
+        if self.is_public():
+            source = self.headers.get("Cf-Connecting-Ip") or self.client_address[0]
+            print(f"public {source} person={self.person or '-'} {self.command} {self.path} -> {status}", flush=True)
 
     def cookie(self, name: str) -> str | None:
         from http.cookies import SimpleCookie
@@ -552,8 +591,13 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
     def plain(self, message: str, status: int = 200):
         return self.send(message.encode(), "text/plain; charset=utf-8", status)
 
+    MAX_BODY = 2 * 1024 * 1024  # a CV is tens of kilobytes; anything near this is not a CV
+
     def read_json(self):
-        length = int(self.headers.get("Content-Length", "0")); return json.loads(self.rfile.read(length) or b"null")
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > self.MAX_BODY:
+            raise ValueError("The request is too large to be a CV.")
+        return json.loads(self.rfile.read(length) or b"null")
 
     def template_choices(self):
         return [{"id": key, "label": value.get("label", key), "margins": value.get("margins_mm", {"top": 0, "right": 0, "bottom": 0, "left": 0})} for key, value in TEMPLATES.items()]
@@ -628,6 +672,7 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
                 return self.plain(f"The folder is {profiles_dir()} but it could not be opened automatically: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
         try: cv = self.read_json()
         except json.JSONDecodeError as exc: return self.plain(f"This is not valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}.", HTTPStatus.BAD_REQUEST)
+        except ValueError as exc: return self.plain(str(exc), HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
         if route == "/api/rename":
             try:
                 renamed = rename_cv(str(cv.get("profile", "")), str(cv.get("name", "")))
@@ -663,7 +708,7 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
         if not self.resolve_person(): return self.plain("Sign in first: send an OAuth bearer token, or open the site in a browser and choose a person.", HTTPStatus.UNAUTHORIZED)
         if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
         try: cv = self.read_json(); errors = validate(cv)
-        except json.JSONDecodeError: errors = ["The submitted CV is not valid data."]
+        except (json.JSONDecodeError, ValueError): errors = ["The submitted CV is not valid data."]
         if errors: return self.send(json.dumps({"errors": errors}).encode(), "application/json", HTTPStatus.BAD_REQUEST)
         try:
             profile = parse_qs(parsed.query).get("profile", ["my-cv"])[0]
@@ -681,8 +726,6 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
             delete_cv(parse_qs(parsed.query).get("profile", [""])[0]); return self.plain("Deleted")
         except (ValueError, OSError) as exc:
             return self.plain(str(exc), HTTPStatus.BAD_REQUEST)
-
-    def log_message(self, *_): pass
 
 
 def main():

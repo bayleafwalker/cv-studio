@@ -121,6 +121,12 @@ class RendererTests(unittest.TestCase):
                 self.assertEqual(calls, ["good"])
                 self.assertTrue((server.person_folder("Juha") / "profiles").is_dir())
                 self.assertIsNone(server.oidc_person("bad", lookup))
+                server.OIDC_INTROSPECT = "https://auth.example/application/o/introspect/"
+                server._userinfo_cache.clear()
+                self.assertIsNone(server.oidc_person("good", lookup, check=lambda t: False))  # wrong audience refused
+                server._userinfo_cache.clear()
+                self.assertEqual(server.oidc_person("good", lookup, check=lambda t: True), "Juha")
+                server.OIDC_INTROSPECT = ""
                 server.OIDC_USERINFO = ""
                 spec = server.openapi("https://cv.example")
                 self.assertEqual(spec["servers"][0]["url"], "https://cv.example")
@@ -153,6 +159,14 @@ class RendererTests(unittest.TestCase):
                 self.assertEqual(call("GET", "/api/profiles", {**pub, "Cookie": "cv_person=Anna"})[0], 401)  # cookie ignored
                 status, data = call("GET", "/api/profiles", {**pub, "Authorization": "Bearer tok"})
                 self.assertEqual(status, 200); self.assertIn(b"Example CV", data)
+                self.assertEqual(call("DELETE", "/api/cv?profile=my-cv", {**pub, "Authorization": "Bearer tok"})[0], 404)  # no public delete
+                self.assertEqual(call("POST", "/api/cv", pub)[0], 404)  # preview endpoint not public
+                old_cap, server.Handler.MAX_BODY = server.Handler.MAX_BODY, 10_000
+                try:
+                    big = '{"pad": "' + 'x' * 20_000 + '"}'
+                    self.assertEqual(call("PUT", "/api/cv?profile=my-cv", {**pub, "Authorization": "Bearer tok"}, big)[0], 400)
+                finally:
+                    server.Handler.MAX_BODY = old_cap
                 self.assertEqual(call("GET", "/api/profiles", {"Cookie": "cv_person=Anna"})[0], 200)  # internal cookie still works
                 self.assertEqual(call("GET", "/", {})[0], 200)                        # chooser page internally
             finally:
