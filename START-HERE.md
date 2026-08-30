@@ -62,10 +62,12 @@ to ChatGPT and ask for the complete corrected file.
    across a page end (it is marked with a dashed outline), hover it in the
    preview and click **Move to next page**; every section, entry and sidebar
    block also has a **Start on a new page** switch in the form.
-5. When ready, click **Save as PDF**. On most computers the normal print
-   window opens; choose **Save as PDF** (or **Microsoft Print to PDF**) as the
-   printer, check that paper is A4 and margins are Default, and click Save.
-   That is the normal Windows way to make a PDF.
+5. When ready, click **Save as PDF**. The PDF lands in your Downloads folder
+   (the app uses Edge or Chrome in the background to make it, without the
+   date and web address that Edge's own print adds). If that is not possible,
+   the normal print window opens instead: choose **Save as PDF** as the
+   printer, paper A4, margins Default, and click Save.
+6. Click any part of the CV on the right to jump to its fields in the form.
 
 ## Where your work is saved
 

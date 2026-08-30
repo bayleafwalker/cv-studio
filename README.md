@@ -54,7 +54,9 @@ make serve
 Open <http://127.0.0.1:8765>. Nothing is sent over the network; the server binds
 only to the loopback address. Changes save automatically.
 The preview updates while editing. **Save as PDF** uses WeasyPrint when it is
-installed and otherwise opens the browser's print dialog for Save as PDF.
+installed, otherwise a headless Edge/Chrome print (`--no-pdf-header-footer`),
+and only then the browser's print dialog. Set `CV_STUDIO_BROWSER` to point at
+a specific browser executable.
 
 ```bash
 python server.py --render  # render without opening the editor

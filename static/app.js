@@ -78,7 +78,7 @@ function updatePreview() {
     preview.srcdoc = await r.text();
   }, 120);
 }
-preview.onload = () => { paginate(); fitPreview(); addHandles(); follow(lastPath, false); };
+preview.onload = () => { paginate(); fitPreview(); addHandles(); addClickToEdit(); follow(lastPath, false); };
 const MM = 96 / 25.4, PAGE = 297 * MM;
 function margins() { return (templates.find(t => t.id === cv.template) || {}).margins || {top: 0, right: 0, bottom: 0, left: 0}; }
 // Screen preview of print pagination: blocks that would cross the bottom margin are pushed to the next page's
@@ -118,6 +118,19 @@ function fitPreview() {
   const available = preview.closest('.preview').clientWidth - 36, scale = Math.min(1, available / sheet.offsetWidth);
   sheet.style.transform = `scale(${scale})`;
   sheet.style.marginBottom = (sheet.offsetHeight * (scale - 1)) + 'px';
+}
+// Clicking a part of the CV opens the matching fields in the editor.
+function editFrom(path) {
+  const first = form.querySelector(`[data-path="${path}.title"], [data-path="${path}.name"], [data-path="${path}.value"], [data-path="${path}.label"], [data-path^="${path}."]:not([type=checkbox]), [data-items="${path}"]`);
+  if (!first) return;
+  document.body.classList.remove('show-preview'); const t = document.querySelector('.viewtoggle'); if (t) t.textContent = '👁 Show the CV';
+  first.scrollIntoView({block: 'center', behavior: 'smooth'}); first.focus({preventScroll: true});
+}
+function addClickToEdit() {
+  const doc = preview.contentDocument;
+  if (!doc) return;
+  doc.querySelectorAll('[data-cv]').forEach(el => { el.style.cursor = 'text'; el.title = el.title || 'Click to edit this in the form'; });
+  doc.body.addEventListener('click', e => { if (e.target.closest('.cv-handle, a')) return; const el = e.target.closest('[data-cv]'); if (el) { e.preventDefault(); editFrom(el.dataset.cv); } });
 }
 // Page-break handles inside the preview: hover an entry (or sidebar block) and move it to the next page; split entries are flagged.
 function addHandles() {
@@ -262,7 +275,7 @@ async function savePDF() {
   if (dirty) await save();
   const r = await fetch('/api/pdf', json(cv));
   if (r.ok) { downloadBlob(await r.blob(), fileName('pdf')); ok('PDF saved to your Downloads.'); return; }
-  ok('The print window opens.');
+  fail('The PDF could not be made directly: ' + await r.text());
   tell('In the print window: <b>Printer</b> = Save as PDF (or Microsoft Print to PDF) · <b>Paper</b> = A4 · <b>Margins</b> = Default · <b>Background graphics</b> on (under More settings) · then Save.<button onclick="hush()">Got it</button>');
   preview.contentWindow.focus(); preview.contentWindow.print();
 }

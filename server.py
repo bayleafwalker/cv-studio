@@ -189,6 +189,55 @@ def new_profile_id(name: str) -> str:
     return profile
 
 
+def find_browser() -> str | None:
+    """A Chromium-based browser that can print to PDF without page headers (Edge ships with Windows)."""
+    import shutil, sys
+    if os.environ.get("CV_STUDIO_BROWSER"):
+        return os.environ["CV_STUDIO_BROWSER"]
+    candidates = []
+    if sys.platform.startswith("win"):
+        for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LocalAppData")):
+            if base:
+                candidates += [Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe", Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe"]
+    elif sys.platform == "darwin":
+        candidates += [Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"), Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge")]
+    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge", "msedge", "chrome"):
+        if shutil.which(name):
+            return shutil.which(name)
+    return next((str(p) for p in candidates if p.is_file()), None)
+
+
+def pdf_bytes(document: str) -> bytes:
+    """WeasyPrint when installed, otherwise a headless Chromium/Edge print with no header or footer."""
+    try:
+        from weasyprint import HTML
+        return HTML(string=document, base_url=str(ROOT)).write_pdf()
+    except ImportError:
+        pass
+    browser = find_browser()
+    if not browser:
+        raise RuntimeError("No PDF helper and no Chrome or Edge found. Use the print window instead.")
+    import shutil, subprocess
+    directory = Path(tempfile.mkdtemp(prefix="cv-pdf-"))
+    try:
+        source, target = directory / "cv.html", directory / "cv.pdf"
+        source.write_text(document, encoding="utf-8")
+        flags = ["--disable-gpu", "--no-sandbox", "--no-first-run", "--disable-background-networking", "--disable-component-update",
+                 "--disable-sync", "--no-pdf-header-footer", "--timeout=20000", f"--print-to-pdf={target}", source.as_uri()]
+        problems = []
+        for mode in ("--headless=new", "--headless=old"):  # new is what current Edge/Chrome ship; old for builds where new hangs
+            try:
+                result = subprocess.run([browser, mode, f"--user-data-dir={directory / 'profile'}", *flags], capture_output=True, timeout=30)
+                problems.append(result.stderr.decode(errors="replace")[-200:].strip())
+            except subprocess.TimeoutExpired:
+                problems.append(f"{mode} did not finish in time")
+            if target.is_file() and target.stat().st_size:
+                return target.read_bytes()
+        raise RuntimeError(f"{Path(browser).name} could not make the PDF. Use the print window instead. ({' / '.join(p for p in problems if p)})")
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
 def open_folder(path: Path) -> None:
     import subprocess, sys
     path.mkdir(parents=True, exist_ok=True)
@@ -411,10 +460,9 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/html": return self.send(document.encode(), "text/html; charset=utf-8", filename="CV.html")
         if route == "/api/pdf":
             try:
-                from weasyprint import HTML
-            except ImportError:
-                return self.plain("Direct PDF download is optional and the PDF helper is not installed. Use Print / Save as PDF instead: it opens the normal print window, where you choose Save as PDF.", HTTPStatus.SERVICE_UNAVAILABLE)
-            return self.send(HTML(string=document, base_url=str(ROOT)).write_pdf(), "application/pdf", filename="CV.pdf")
+                return self.send(pdf_bytes(document), "application/pdf", filename="CV.pdf")
+            except Exception as exc:  # noqa: BLE001 - any failure falls back to the browser's print window
+                return self.plain(str(exc), HTTPStatus.SERVICE_UNAVAILABLE)
         self.plain("Not found", HTTPStatus.NOT_FOUND)
 
     def do_PUT(self):
