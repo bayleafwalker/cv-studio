@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent
 SAMPLE_SOURCE = ROOT / "content" / "cv.sample.json"
 LOCAL_SOURCE = ROOT / "content" / "cv.local.json"
 PROFILES_DIR = ROOT / "content" / "profiles"
-PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,48}$")
+PROFILE_ID = re.compile(r'^[^.\\/:*?"<>|\x00-\x1f][^\\/:*?"<>|\x00-\x1f]{0,99}$')
 TEMPLATE_DIR = ROOT / "templates"
 
 
@@ -42,33 +42,99 @@ def discover_templates() -> dict[str, dict]:
 TEMPLATES = discover_templates()
 
 
+def read_version() -> str:
+    try:
+        import tomllib
+        return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    except Exception:  # pragma: no cover - version is cosmetic
+        return "unknown"
+
+
+VERSION = read_version()
+
+
+def profile_label(profile_id: str) -> str:
+    words = re.sub(r"[-_.]+", " ", profile_id).strip()
+    words = re.sub(r"^(cv|resume)\s+", "", words, flags=re.I) or words
+    return words[:1].upper() + words[1:]
+
+
+def scan_profiles() -> list[dict]:
+    """Every CV file the app can see, including ones it cannot read, with a plain-language problem."""
+    found: list[dict] = [{"id": "sample", "label": "Example CV", "path": SAMPLE_SOURCE, "file": SAMPLE_SOURCE.name}]
+    candidates: list[Path] = []
+    if LOCAL_SOURCE.exists():
+        candidates.append(LOCAL_SOURCE)
+    content_dir = SAMPLE_SOURCE.parent
+    for folder in (content_dir, PROFILES_DIR):
+        if folder.is_dir():
+            candidates += sorted(p for p in folder.glob("*.json") if p not in (SAMPLE_SOURCE, LOCAL_SOURCE) and not p.name.startswith("."))
+    seen = {"sample"}
+    for path in candidates:
+        if path == LOCAL_SOURCE:
+            item = {"id": "my-cv", "label": "My CV", "path": path}
+        else:
+            profile_id = path.name.removesuffix(".json").removesuffix(".local")
+            item = {"id": profile_id, "label": profile_label(profile_id), "path": path}
+            if not PROFILE_ID.fullmatch(profile_id) or ".." in profile_id:
+                item["error"] = "Rename this file: names may not start with a dot or contain \\ / : * ? \" < > |."
+            elif profile_id in seen:
+                item["error"] = "Another CV file already has this name. Rename one of them."
+        item["file"] = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+        item.setdefault("error", file_problem(path))
+        seen.add(item["id"])
+        found.append(item)
+    return found
+
+
+def file_problem(path: Path) -> str | None:
+    """Explain why a CV file cannot be used, or None when it is fine."""
+    try:
+        raw = path.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        return f"The file could not be read: {exc.strerror or exc}."
+    try:
+        cv = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return f"This is not valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}."
+    errors = validate(cv)
+    return " ".join(errors) if errors else None
+
+
+def list_profiles() -> list[dict[str, str]]:
+    return [{key: value for key, value in item.items() if key != "path"} for item in scan_profiles()]
+
+
 def profile_path(profile: str) -> Path:
     if profile == "sample":
         return SAMPLE_SOURCE
     if profile == "my-cv":
         return LOCAL_SOURCE
-    if not PROFILE_ID.fullmatch(profile):
-        raise ValueError("That CV profile name is not valid.")
+    if not PROFILE_ID.fullmatch(profile) or ".." in profile:
+        raise ValueError("A CV name may not start with a dot or contain \\ / : * ? \" < > |.")
+    for item in scan_profiles():
+        if item["id"] == profile:
+            return item["path"]
     return PROFILES_DIR / f"{profile}.local.json"
 
 
-def list_profiles() -> list[dict[str, str]]:
-    profiles = [{"id": "sample", "label": "Example CV"}]
-    if LOCAL_SOURCE.exists():
-        profiles.append({"id": "my-cv", "label": "My CV"})
-    if PROFILES_DIR.exists():
-        for path in sorted(PROFILES_DIR.glob("*.local.json")):
-            profile_id = path.name.removesuffix(".local.json")
-            profiles.append({"id": profile_id, "label": profile_id.replace("-", " ").title()})
-    return profiles
+def default_profile() -> str:
+    """The CV file changed most recently, so a freshly dropped-in file opens by itself."""
+    usable = [item for item in scan_profiles() if item["id"] != "sample" and not item.get("error")]
+    if not usable:
+        return "sample"
+    return max(usable, key=lambda item: item["path"].stat().st_mtime)["id"]
 
 
 def load_cv(profile: str | None = None) -> dict:
-    profile = profile or ("my-cv" if LOCAL_SOURCE.exists() else "sample")
+    profile = profile or default_profile()
     source = profile_path(profile)
     if not source.exists():
-        raise ValueError("That saved CV profile does not exist yet.")
-    return json.loads(source.read_text(encoding="utf-8"))
+        raise ValueError("That saved CV does not exist any more. It may have been moved or deleted.")
+    problem = file_problem(source)
+    if problem:
+        raise ValueError(f"{source.name}: {problem}")
+    return json.loads(source.read_text(encoding="utf-8-sig"))
 
 
 def save_cv(cv: dict, profile: str = "my-cv") -> str:
@@ -87,6 +153,34 @@ def save_cv(cv: dict, profile: str = "my-cv") -> str:
         if temp_path.exists():
             temp_path.unlink()
     return profile
+
+
+def delete_cv(profile: str) -> None:
+    if profile == "sample":
+        raise ValueError("The example CV cannot be deleted.")
+    path = profile_path(profile)
+    if not path.exists():
+        raise ValueError("That CV file is already gone.")
+    path.unlink()
+
+
+def new_profile_id(name: str) -> str:
+    requested = re.sub(r"\.(local\.)?json$", "", str(name).strip(), flags=re.I)
+    profile = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", requested).strip(" .-")[:100]
+    if not profile or not PROFILE_ID.fullmatch(profile):
+        raise ValueError("Give the CV a short name, for example: Product engineer.")
+    return profile
+
+
+def open_folder(path: Path) -> None:
+    import subprocess, sys
+    path.mkdir(parents=True, exist_ok=True)
+    if sys.platform.startswith("win"):
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
 
 
 def validate(cv: object) -> list[str]:
@@ -124,7 +218,7 @@ def shown(item: dict) -> bool:
     return item.get("visible", True) is not False
 
 
-def render_entry(entry: dict) -> str:
+def render_entry(entry: dict, anchor: str = "") -> str:
     if not shown(entry):
         return ""
     title = text(entry.get("title"))
@@ -138,27 +232,27 @@ def render_entry(entry: dict) -> str:
     bullets = "".join(f"<li>{text(item)}</li>" for item in entry.get("bullets", []) if str(item).strip())
     bullet_html = f"<ul>{bullets}</ul>" if bullets else ""
     organisation_html = f'<p class="organisation">{organisation}</p>' if organisation else ""
-    return f'<article class="entry"><h3 class="entry-title">{title}</h3>{organisation_html}{meta}{description}{bullet_html}</article>'
+    return f'<article class="entry" data-cv="{anchor}"><h3 class="entry-title">{title}</h3>{organisation_html}{meta}{description}{bullet_html}</article>'
 
 
 def render_parts(cv: dict) -> dict[str, str]:
     """Create content fragments shared by every presentation template."""
     person = cv["person"]
     contact = "".join(
-        f'<div class="contact-item"><span class="contact-label">{text(item.get("label"))}</span><span class="contact-value{" contact-link" if str(item.get("label", "")).lower() in {"linkedin", "website", "portfolio"} else ""}">{text(item.get("value"))}</span></div>'
-        for item in cv["contact"] if isinstance(item, dict) and shown(item) and item.get("value")
+        f'<div class="contact-item" data-cv="contact.{i}"><span class="contact-label">{text(item.get("label"))}</span><span class="contact-value{" contact-link" if str(item.get("label", "")).lower() in {"linkedin", "website", "portfolio"} else ""}">{text(item.get("value"))}</span></div>'
+        for i, item in enumerate(cv["contact"]) if isinstance(item, dict) and shown(item) and item.get("value")
     )
     side = "".join(
-        f'<section class="sidebar-section"><h2>{text(section.get("title"))}</h2><div class="tags">' +
+        f'<section class="sidebar-section" data-cv="sidebar_sections.{i}"><h2>{text(section.get("title"))}</h2><div class="tags">' +
         "".join(f'<span class="tag">{text(item)}</span>' for item in section.get("items", []) if str(item).strip()) +
         "</div></section>"
-        for section in cv["sidebar_sections"] if isinstance(section, dict) and shown(section)
+        for i, section in enumerate(cv["sidebar_sections"]) if isinstance(section, dict) and shown(section)
     )
     sections = "".join(
-        f'<section class="main-section{" page-break" if section.get("page_break_before") else ""}"><h2>{text(section.get("title"))}</h2>' +
-        "".join(render_entry(entry) for entry in section.get("entries", []) if isinstance(entry, dict)) +
+        f'<section class="main-section{" page-break" if section.get("page_break_before") else ""}" data-cv="sections.{i}"><h2>{text(section.get("title"))}</h2>' +
+        "".join(render_entry(entry, f"sections.{i}.entries.{j}") for j, entry in enumerate(section.get("entries", [])) if isinstance(entry, dict)) +
         "</section>"
-        for section in cv["sections"] if isinstance(section, dict) and shown(section)
+        for i, section in enumerate(cv["sections"]) if isinstance(section, dict) and shown(section)
     )
     return {"name": text(person["name"]), "headline": text(person.get("headline")),
             "summary": text(person.get("summary")), "contact": contact, "sidebar": side,
@@ -166,11 +260,11 @@ def render_parts(cv: dict) -> dict[str, str]:
 
 
 def render_classic(parts: dict[str, str]) -> str:
-    return f'<article class="cv"><aside class="sidebar"><div class="contact">{parts["contact"]}</div>{parts["sidebar"]}</aside><main class="main"><h1>{parts["name"]}</h1><p class="headline">{parts["headline"]}</p><p class="summary">{parts["summary"]}</p>{parts["sections"]}</main></article>'
+    return f'<article class="cv"><aside class="sidebar"><div class="contact">{parts["contact"]}</div>{parts["sidebar"]}</aside><main class="main"><h1 data-cv="person">{parts["name"]}</h1><p class="headline">{parts["headline"]}</p><p class="summary">{parts["summary"]}</p>{parts["sections"]}</main></article>'
 
 
 def render_modern(parts: dict[str, str]) -> str:
-    return f'<article class="cv modern"><header class="masthead"><h1>{parts["name"]}</h1><div class="headline">{parts["headline"]}</div><div class="contact-line">{parts["contact"]}</div></header><main><p class="summary">{parts["summary"]}</p>{parts["sections"]}</main></article>'
+    return f'<article class="cv modern"><header class="masthead" data-cv="person"><h1>{parts["name"]}</h1><div class="headline">{parts["headline"]}</div><div class="contact-line">{parts["contact"]}</div></header><main><p class="summary">{parts["summary"]}</p>{parts["sections"]}</main></article>'
 
 
 RENDERERS = {"classic": render_classic, "modern": render_modern}
@@ -189,24 +283,280 @@ def render_html(cv: dict) -> str:
     return f'<!doctype html><html><head><meta charset="utf-8"><title>{parts["name"]} — CV</title><style>{css}</style></head><body>{renderer(parts)}</body></html>'
 
 
-APP_HTML = r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CV Studio — a stupidly simple little CV generator</title><style>
-*{box-sizing:border-box} body{margin:0;font:14px system-ui,sans-serif;color:#263944;background:#f2f5f6}.app{display:grid;grid-template-columns:minmax(330px,43%) 1fr;min-height:100vh}.editor{padding:22px;overflow:auto}.preview{padding:18px;background:#dce3e6;overflow:auto}h1{margin:0 0 6px;font-size:24px}h2{margin:24px 0 8px;font-size:17px}.hint{color:#62737d;margin:0 0 18px}label{display:block;margin:10px 0 4px;font-weight:650}input,textarea,select{width:100%;border:1px solid #b9cbd2;border-radius:5px;padding:8px;font:inherit;background:white}textarea{min-height:70px;resize:vertical}.card{margin:10px 0;padding:12px;border:1px solid #cbd7dc;border-radius:7px;background:#fff}.row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}button{border:0;border-radius:5px;padding:9px 12px;background:#147084;color:white;font:inherit;font-weight:650;cursor:pointer}button.secondary{background:#60747e}button.remove{background:#9a3940;padding:5px 8px;float:right}.toggle{display:flex;align-items:center;gap:6px;font-weight:500}.toggle input{width:auto}.status{min-height:20px;color:#176238}iframe{width:210mm;height:297mm;border:0;background:white;box-shadow:0 2px 12px #89969b}@media(max-width:1000px){.app{grid-template-columns:1fr}.preview{padding:10px}.editor{max-height:none}iframe{transform-origin:top left;transform:scale(.72);margin-bottom:-83mm}}@media print{.editor{display:none}.app{display:block}.preview{padding:0;background:white}iframe{width:210mm;height:297mm;box-shadow:none}}</style></head><body><div class="app"><main class="editor"><h1>A stupidly simple little CV generator</h1><p class="hint">It runs only on this computer. Edit plain fields and cards; your preview updates as you type.</p><div id="form"></div><div class="actions"><button onclick="save()">Save now</button><button class="secondary" onclick="newProfile()">New profile</button><button class="secondary" onclick="downloadBackup()">Download backup</button><button class="secondary" onclick="document.querySelector('#backup-file').click()">Load backup</button><input id="backup-file" type="file" accept="application/json" hidden><button class="secondary" onclick="downloadFile('html')">Download HTML</button><button class="secondary" onclick="downloadFile('pdf')">Download PDF</button></div><div id="status" class="status"></div></main><aside class="preview"><iframe id="preview" title="CV preview"></iframe></aside></div><script>
-let cv, templates=[], profiles=[], profile; const form=document.querySelector('#form'), preview=document.querySelector('#preview'), status=document.querySelector('#status');
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function field(label,value,path,area=false){return `<label>${label}</label>${area?`<textarea data-path="${path}">${esc(value)}</textarea>`:`<input data-path="${path}" value="${esc(value)}">`}`}
-function visible(item,path){return `<label class="toggle"><input type="checkbox" data-path="${path}.visible" ${item.visible===false?'':'checked'}> Show this</label>`}
-function entry(e,path){return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${visible(e,path)}${field('Title',e.title,path+'.title')}${field('Organisation / school',e.organisation,path+'.organisation')}<div class="row"><div>${field('Dates',e.dates,path+'.dates')}</div><div>${field('Location',e.location,path+'.location')}</div></div>${field('Description',e.description,path+'.description',true)}<label>Achievement bullets (one per line)</label><textarea data-bullets="${path}">${esc((e.bullets||[]).join('\n'))}</textarea></div>`}
-function render(){let options=templates.map(t=>`<option value="${t.id}" ${t.id===cv.template?'selected':''}>${t.label}</option>`).join(''),profileOptions=profiles.map(p=>`<option value="${p.id}" ${p.id===profile?'selected':''}>${p.label}</option>`).join('');form.innerHTML=`<h2>CV profile</h2><label>Loaded CV</label><select data-profile>${profileOptions}</select><p class="hint">Choose a saved CV, or use New profile to make a separate copy.</p><h2>Document style</h2><label>Template</label><select data-template>${options}</select><p class="hint">The style changes presentation only; your content stays the same.</p><h2>About you</h2>${field('Full name',cv.person.name,'person.name')}${field('Headline',cv.person.headline,'person.headline')}${field('Short introduction',cv.person.summary,'person.summary',true)}<h2>Contact details</h2>${cv.contact.map((x,i)=>`<div class="card">${visible(x,'contact.'+i)}${field('Label',x.label,'contact.'+i+'.label')}${field('Value',x.value,'contact.'+i+'.value')}</div>`).join('')}<h2>Sidebar</h2>${cv.sidebar_sections.map((x,i)=>`<div class="card">${visible(x,'sidebar_sections.'+i)}${field('Heading',x.title,'sidebar_sections.'+i+'.title')}<label>Items (one per line)</label><textarea data-items="sidebar_sections.${i}">${esc((x.items||[]).join('\n'))}</textarea></div>`).join('')}<h2>Main CV sections</h2><p class="hint">Move whole sections to set their order. A page break starts that section on a fresh A4 page.</p>${cv.sections.map((s,i)=>`<section class="card"><div class="actions"><button class="secondary" data-section-move="${i},-1" ${i===0?'disabled':''}>Move up</button><button class="secondary" data-section-move="${i},1" ${i===cv.sections.length-1?'disabled':''}>Move down</button></div>${visible(s,'sections.'+i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before?'checked':''}> Start this section on a new page</label>${field('Section heading',s.title,'sections.'+i+'.title')}<p class="hint">${s.type}</p>${s.entries.map((e,j)=>entry(e,`sections.${i}.entries.${j}`)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}`; bind(); updatePreview()}
-function get(path){return path.split('.').reduce((o,k)=>o[k],cv)} function set(path,value){let p=path.split('.'),key=p.pop(),o=p.reduce((x,k)=>x[k],cv);o[key]=value}
-function bind(){form.querySelectorAll('[data-path]').forEach(el=>el.oninput=()=>{set(el.dataset.path,el.type==='checkbox'?el.checked:el.value);updatePreview()});form.querySelector('[data-template]').onchange=e=>{cv.template=e.target.value;updatePreview()};form.querySelector('[data-profile]').onchange=e=>loadProfile(e.target.value);form.querySelectorAll('[data-bullets]').forEach(el=>el.oninput=()=>{get(el.dataset.bullets).bullets=el.value.split('\n').filter(Boolean);updatePreview()});form.querySelectorAll('[data-items]').forEach(el=>el.oninput=()=>{get(el.dataset.items).items=el.value.split('\n').filter(Boolean);updatePreview()});form.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{let p=b.dataset.remove.split('.'),idx=+p.pop(),a=get(p.join('.'));a.splice(idx,1);render()});form.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{let s=cv.sections[+b.dataset.add];s.entries.push({title:'New entry',organisation:'',dates:'',location:'',description:'',bullets:[],visible:true});render()});form.querySelectorAll('[data-section-move]').forEach(b=>b.onclick=()=>{let [i,d]=b.dataset.sectionMove.split(',').map(Number),to=i+d;if(to<0||to>=cv.sections.length)return;[cv.sections[i],cv.sections[to]]=[cv.sections[to],cv.sections[i]];render()})}
-let timer,saveTimer,ready=false,dirty=false; function markDirty(){if(!ready)return;dirty=true;status.textContent='Saving…';clearTimeout(saveTimer);saveTimer=setTimeout(save,700)} function updatePreview(){markDirty();clearTimeout(timer);timer=setTimeout(async()=>{let r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cv)});preview.srcdoc=await r.text()},120)}
-async function reloadProfiles(){profiles=await fetch('/api/profiles').then(r=>r.json())} async function loadProfile(id){if(dirty){await save();if(dirty){status.textContent='Please save or fix the current CV before switching.';render();return}}let r=await fetch('/api/cv?profile='+encodeURIComponent(id));if(!r.ok){status.textContent=await r.text();return}cv=await r.json();profile=id;ready=false;render();ready=true;status.textContent='Loaded from this computer.'}
-async function save(){clearTimeout(saveTimer);let r=await fetch('/api/cv?profile='+encodeURIComponent(profile),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cv)}),d=await r.json();if(r.ok){profile=d.profile;dirty=false;await reloadProfiles();render();status.textContent='Saved on this computer.'}else status.textContent=d.errors.join(' ')}
-async function newProfile(){let name=prompt('Name this separate CV profile (for example: Product manager)');if(!name)return;let r=await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,cv})});if(!r.ok){status.textContent=await r.text();return}profile=(await r.json()).profile;await reloadProfiles();render();status.textContent='New profile saved locally.'}
-function downloadBackup(){let a=document.createElement('a'),file=(cv.person.name||'CV').trim().replace(/[^a-z0-9]+/gi,'-')+'-backup.json';a.href=URL.createObjectURL(new Blob([JSON.stringify(cv,null,2)],{type:'application/json'}));a.download=file;a.click();URL.revokeObjectURL(a.href)} document.querySelector('#backup-file').onchange=async e=>{let file=e.target.files[0];if(!file)return;try{let imported=JSON.parse(await file.text()),r=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(imported)});if(!r.ok)throw Error(await r.text());cv=imported;dirty=true;render();status.textContent='Backup loaded. It will save shortly.'}catch(error){status.textContent='That backup could not be loaded: '+error.message}e.target.value=''};
-async function downloadFile(kind){let r=await fetch('/api/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cv)});if(!r.ok){status.textContent=await r.text();return}let a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=(cv.person.name||'CV').trim().replace(/[^a-z0-9]+/gi,'-')+'-CV.'+kind;a.click();URL.revokeObjectURL(a.href)}
-const initialCV=__INITIAL_CV__,initialProfiles=__INITIAL_PROFILES__,initialTemplates=__INITIAL_TEMPLATES__,initialPreview=__INITIAL_PREVIEW__;
-profiles=initialProfiles;templates=initialTemplates;profile=profiles.some(x=>x.id==='my-cv')?'my-cv':'sample';cv=initialCV;preview.srcdoc=initialPreview;render();ready=true;status.textContent='Ready — saved changes stay on this computer.';</script></body></html>'''
+PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box-shadow:none!important;width:auto!important;min-height:0!important}.cv-focus{outline:2px solid #147084;outline-offset:3px;border-radius:2px}@media print{.cv-focus{outline:none}}</style>"
+
+
+APP_HTML = r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CV Studio — a stupidly simple little CV generator</title><link rel="icon" href="data:,"><style>
+*{box-sizing:border-box}
+body{margin:0;font:14px system-ui,sans-serif;color:#263944;background:#f2f5f6}
+.app{display:grid;grid-template-columns:minmax(330px,43%) 1fr;height:100vh}
+.editor{padding:22px;overflow:auto}
+.preview{padding:18px;background:#dce3e6;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:8px}
+h1{margin:0 0 6px;font-size:24px}
+h2{margin:24px 0 8px;font-size:17px}
+.hint{color:#62737d;margin:0 0 12px}
+label{display:block;margin:10px 0 4px;font-weight:650}
+input,textarea,select{width:100%;border:1px solid #b9cbd2;border-radius:5px;padding:8px;font:inherit;background:white}
+textarea{min-height:70px;resize:vertical}
+.card{margin:10px 0;padding:12px;border:1px solid #cbd7dc;border-radius:7px;background:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+button{border:0;border-radius:5px;padding:9px 12px;background:#147084;color:white;font:inherit;font-weight:650;cursor:pointer}
+button.secondary{background:#60747e}
+button.danger{background:#9a3940}
+button.remove{background:#9a3940;padding:5px 8px;float:right}
+button:disabled{opacity:.5;cursor:default}
+.toggle{display:flex;align-items:center;gap:6px;font-weight:500}
+.toggle input{width:auto}
+.status{min-height:20px;color:#176238;margin:6px 0}
+.problem{display:none;margin:10px 0;padding:10px 12px;border:1px solid #d9a3a7;border-radius:7px;background:#fbeaec;color:#7a1f27;white-space:pre-wrap}
+.problem.show{display:block}
+.notice{display:none;margin:10px 0;padding:10px 12px;border:1px solid #b9cbd2;border-radius:7px;background:#e7f3f6;color:#0f4c5a}
+.notice.show{display:block}
+.notice button{margin-left:8px;padding:5px 9px}
+.steps{margin:0 0 6px;padding-left:20px;color:#3c4f5a}
+.steps li{margin:3px 0}
+.toolbar{position:sticky;top:-22px;background:#f2f5f6;padding:8px 0;margin:-8px 0 4px;z-index:2;border-bottom:1px solid #d7e0e4}
+code{background:#e7edf0;padding:1px 4px;border-radius:3px}
+.sheet{position:relative;width:210mm;flex:none;transform-origin:top center;background:white;box-shadow:0 2px 12px #89969b}
+iframe{display:block;width:210mm;height:297mm;border:0;background:white}
+.guides{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(297mm - 1px),#d6626a calc(297mm - 1px),#d6626a 297mm)}
+.pagecount{color:#62737d;font-size:13px;flex:none}
+body.dragging::after{content:"Drop your CV file to open it";position:fixed;inset:12px;border:3px dashed #147084;border-radius:12px;background:#f2f5f6ee;display:flex;align-items:center;justify-content:center;font-size:24px;color:#147084;z-index:10}
+@media(max-width:1000px){.app{grid-template-columns:1fr;height:auto}.preview{padding:10px}}
+@media print{body{display:none}}
+</style></head><body><div class="app"><main class="editor">
+<h1>A stupidly simple little CV generator</h1>
+<p class="hint">It runs only on this computer. Edit plain fields and cards; your preview updates as you type and saves by itself.</p>
+<div class="toolbar"><div class="actions">
+<button onclick="savePDF()" title="Makes a PDF; if the print window opens, choose Save as PDF there">Save as PDF</button>
+<button class="secondary" onclick="save()">Save now</button>
+<button class="secondary" onclick="document.querySelector('#backup-file').click()">Open a CV file…</button>
+<input id="backup-file" type="file" accept=".json,application/json" hidden>
+<button class="secondary" onclick="copyForChat()">Copy example for ChatGPT</button>
+<button class="secondary" onclick="downloadFile('html')">Download HTML</button>
+</div><div id="status" class="status"></div><div id="problem" class="problem"></div><div id="notice" class="notice"></div></div>
+<div id="form"></div>
+</main><aside class="preview"><div class="sheet"><iframe id="preview" title="CV preview"></iframe><div class="guides"></div></div><div id="pagecount" class="pagecount"></div></aside></div><script>
+let cv, templates = [], profiles = [], profile, meta;
+const form = document.querySelector('#form'), preview = document.querySelector('#preview'), status = document.querySelector('#status'), problem = document.querySelector('#problem'), notice = document.querySelector('#notice'), sheet = document.querySelector('.sheet');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const json = body => ({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+
+function ok(message) { status.textContent = message; problem.classList.remove('show'); }
+function fail(message) { problem.textContent = message; problem.classList.add('show'); status.textContent = ''; }
+function tell(html) { notice.innerHTML = html; notice.classList.add('show'); }
+function hush() { notice.classList.remove('show'); }
+
+function field(label, value, path, area = false) {
+  return `<label>${label}</label>${area ? `<textarea data-path="${path}">${esc(value)}</textarea>` : `<input data-path="${path}" value="${esc(value)}">`}`;
+}
+function visible(item, path) {
+  return `<label class="toggle"><input type="checkbox" data-path="${path}.visible" ${item.visible === false ? '' : 'checked'}> Show this</label>`;
+}
+function entry(e, path) {
+  return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${visible(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label>Achievement bullets (one per line)</label><textarea data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
+}
+function profileOptions() {
+  return profiles.map(p => `<option value="${esc(p.id)}" ${p.id === profile ? 'selected' : ''}>${p.error ? '⚠ ' : ''}${esc(p.label)}${p.error ? ' — cannot be opened' : ''}</option>`).join('');
+}
+function renderProfiles() {
+  const select = form.querySelector('[data-profile]');
+  if (select) select.innerHTML = profileOptions();
+}
+function render() {
+  const options = templates.map(t => `<option value="${t.id}" ${t.id === cv.template ? 'selected' : ''}>${t.label}</option>`).join('');
+  const isSample = profile === 'sample';
+  form.innerHTML = `<h2>Which CV</h2><label>Open CV</label><select data-profile>${profileOptions()}</select>
+<p class="hint">${isSample ? 'This is the example. Your edits are saved as <b>My CV</b> automatically.' : `Saved in <code>${esc((profiles.find(p => p.id === profile) || {}).file || '')}</code>.`}</p>
+<div class="actions"><button class="secondary" onclick="newProfile()">Make a copy of this CV</button><button class="danger" onclick="deleteProfile()" ${isSample ? 'disabled' : ''}>Delete this CV</button></div>
+<div class="card"><b>Your CV files are here:</b><br><code>${esc(meta.folder)}</code><div class="actions" style="margin-bottom:0"><button class="secondary" onclick="openFolder()">Open this folder</button></div><p class="hint" style="margin:8px 0 0">Any <code>.json</code> file you put in this folder shows up in the <b>Open CV</b> list within a few seconds. The file name becomes the CV name.</p></div>
+<p class="hint">Want ChatGPT to draft one? Click <b>Copy example for ChatGPT</b>, paste it into the chat, save the answer as a <code>.json</code> file, then click <b>Open a CV file…</b> (or drop the file onto this window, or put it in the CV folder).</p>
+<h2>Document style</h2><label>Template</label><select data-template>${options}</select><p class="hint">The style changes presentation only; your content stays the same.</p>
+<h2>About you</h2>${field('Full name', cv.person.name, 'person.name')}${field('Headline', cv.person.headline, 'person.headline')}${field('Short introduction', cv.person.summary, 'person.summary', true)}
+<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card">${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}
+<h2>Sidebar</h2>${cv.sidebar_sections.map((x, i) => `<div class="card">${visible(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label>Items (one per line)</label><textarea data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}
+<h2>Main CV sections</h2><p class="hint">Move whole sections to set their order. A page break starts that section on a fresh A4 page.</p>
+${cv.sections.map((s, i) => `<section class="card"><div class="actions"><button class="secondary" data-section-move="${i},-1" ${i === 0 ? 'disabled' : ''}>Move up</button><button class="secondary" data-section-move="${i},1" ${i === cv.sections.length - 1 ? 'disabled' : ''}>Move down</button></div>${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
+<p class="hint">CV Studio ${esc(meta.version)}</p>`;
+  bind();
+}
+function get(path) { return path.split('.').reduce((o, k) => o[k], cv); }
+function set(path, value) { const p = path.split('.'), key = p.pop(), o = p.reduce((x, k) => x[k], cv); o[key] = value; }
+function bind() {
+  form.querySelectorAll('[data-path]').forEach(el => el.oninput = () => { set(el.dataset.path, el.type === 'checkbox' ? el.checked : el.value); changed(); });
+  form.querySelector('[data-template]').onchange = e => { cv.template = e.target.value; changed(); };
+  form.querySelector('[data-profile]').onchange = e => loadProfile(e.target.value);
+  form.querySelectorAll('[data-bullets]').forEach(el => el.oninput = () => { get(el.dataset.bullets).bullets = el.value.split('\n').filter(Boolean); changed(); });
+  form.querySelectorAll('[data-items]').forEach(el => el.oninput = () => { get(el.dataset.items).items = el.value.split('\n').filter(Boolean); changed(); });
+  form.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { const p = b.dataset.remove.split('.'), idx = +p.pop(); get(p.join('.')).splice(idx, 1); render(); changed(); });
+  form.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { cv.sections[+b.dataset.add].entries.push({title: 'New entry', organisation: '', dates: '', location: '', description: '', bullets: [], visible: true}); render(); changed(); });
+  form.querySelectorAll('[data-section-move]').forEach(b => b.onclick = () => { const [i, d] = b.dataset.sectionMove.split(',').map(Number), to = i + d; if (to < 0 || to >= cv.sections.length) return; [cv.sections[i], cv.sections[to]] = [cv.sections[to], cv.sections[i]]; render(); changed(); });
+}
+
+// Editing marks the CV dirty and schedules a save; re-rendering the form never does (that caused an endless save/redraw loop).
+let previewTimer, saveTimer, dirty = false;
+function changed() { dirty = true; status.textContent = 'Saving…'; clearTimeout(saveTimer); saveTimer = setTimeout(save, 700); updatePreview(); }
+function updatePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(async () => {
+    const r = await fetch('/api/preview', json(cv));
+    if (!r.ok) { fail(await r.text()); return; }
+    preview.srcdoc = await r.text();
+  }, 120);
+}
+function fitPreview() {
+  const doc = preview.contentDocument;
+  if (doc && doc.documentElement) {
+    const pageHeight = 297 / 25.4 * 96, height = doc.documentElement.scrollHeight, pages = Math.max(1, Math.ceil((height - 2) / pageHeight));
+    preview.style.height = (pages * pageHeight) + 'px';
+    document.querySelector('#pagecount').textContent = pages === 1 ? '1 page' : `${pages} pages — the red lines show where pages end`;
+  }
+  const available = preview.closest('.preview').clientWidth - 36, scale = Math.min(1, available / sheet.offsetWidth);
+  sheet.style.transform = `scale(${scale})`;
+  sheet.style.marginBottom = (sheet.offsetHeight * (scale - 1)) + 'px';
+}
+preview.onload = () => { fitPreview(); follow(lastPath, false); };
+// The preview follows the field being edited: scroll to and outline the matching part of the CV.
+let lastPath = '';
+function follow(path, smooth = true) {
+  if (!path) return;
+  lastPath = path;
+  const doc = preview.contentDocument;
+  if (!doc) return;
+  let el = null, parts = path.split('.');
+  while (parts.length && !el) { el = doc.querySelector(`[data-cv="${parts.join('.')}"]`); parts.pop(); }
+  doc.querySelectorAll('.cv-focus').forEach(x => x.classList.remove('cv-focus'));
+  if (!el) return;
+  el.classList.add('cv-focus');
+  const pane = document.querySelector('.preview'), scale = sheet.getBoundingClientRect().width / sheet.offsetWidth;
+  const top = sheet.offsetTop + el.getBoundingClientRect().top * scale - 60;
+  if (top < pane.scrollTop || top + el.offsetHeight * scale > pane.scrollTop + pane.clientHeight - 60) pane.scrollTo({top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto'});
+}
+form.addEventListener('focusin', e => follow(e.target.dataset.path || e.target.dataset.bullets || e.target.dataset.items));
+window.addEventListener('resize', fitPreview);
+
+async function reloadProfiles() { profiles = await fetch('/api/profiles').then(r => r.json()); profiles.forEach(p => known.add(p.id)); renderProfiles(); }
+async function loadProfile(id, quiet = false) {
+  if (dirty) { await save(); if (dirty) { renderProfiles(); return; } }
+  const r = await fetch('/api/cv?profile=' + encodeURIComponent(id));
+  if (!r.ok) {
+    const info = profiles.find(p => p.id === id) || {};
+    fail(`${info.file || id} cannot be opened.\n${await r.text()}\n\nFix the file and save it; this page notices the change by itself. If ChatGPT wrote it, paste this message back to ChatGPT and ask for a corrected file.`);
+    renderProfiles();
+    return;
+  }
+  cv = await r.json(); profile = id; render(); updatePreview(); hush();
+  if (!quiet) ok('Opened from this computer.');
+}
+async function save() {
+  clearTimeout(saveTimer);
+  const r = await fetch('/api/cv?profile=' + encodeURIComponent(profile), {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cv)});
+  const d = await r.json();
+  if (!r.ok) { fail('Not saved yet: ' + d.errors.join(' ')); return; }
+  dirty = false;
+  const switched = d.profile !== profile;
+  profile = d.profile;
+  await reloadProfiles();
+  if (switched) render();
+  ok('Saved on this computer.');
+}
+async function createProfile(name, data) {
+  const r = await fetch('/api/profiles', json({name, cv: data}));
+  if (!r.ok) { fail(await r.text()); return false; }
+  const created = (await r.json()).profile;
+  await reloadProfiles();
+  await loadProfile(created, true);
+  return true;
+}
+async function newProfile() {
+  const current = (profiles.find(p => p.id === profile) || {}).label || 'My CV';
+  const name = prompt('Name for the copy', current === 'Example CV' ? 'My CV 2' : current + ' 2');
+  if (!name) return;
+  if (dirty) await save();
+  if (await createProfile(name, cv)) ok('Copy saved. You are now editing the copy.');
+}
+async function deleteProfile() {
+  const info = profiles.find(p => p.id === profile) || {};
+  if (!confirm(`Delete "${info.label}" (${info.file})? This cannot be undone.`)) return;
+  const r = await fetch('/api/cv?profile=' + encodeURIComponent(profile), {method: 'DELETE'});
+  if (!r.ok) { fail(await r.text()); return; }
+  dirty = false; await reloadProfiles();
+  await loadProfile(profiles.some(p => p.id === 'my-cv') ? 'my-cv' : 'sample', true);
+  ok('Deleted.');
+}
+async function openFolder() {
+  const r = await fetch('/api/open-folder', {method: 'POST'});
+  if (r.ok) ok('Folder opened: ' + await r.text() + ' — any .json file you put there appears in the Open CV list.'); else fail(await r.text());
+}
+async function importFile(file) {
+  if (!file) return;
+  let imported;
+  try { imported = JSON.parse(await file.text()); }
+  catch (error) { fail(`${file.name} is not valid JSON: ${error.message}\n\nIf ChatGPT wrote it, paste this message back and ask for the complete corrected file.`); return; }
+  const r = await fetch('/api/preview', json(imported));
+  if (!r.ok) { fail(`${file.name} cannot be used: ${await r.text()}`); return; }
+  if (dirty) await save();
+  if (await createProfile(file.name, imported)) ok(`${file.name} opened and saved as its own CV.`);
+}
+document.querySelector('#backup-file').onchange = e => { importFile(e.target.files[0]); e.target.value = ''; };
+document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+document.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('dragging'); importFile(e.dataTransfer.files[0]); });
+
+async function copyForChat() {
+  const text = `Below is my CV in JSON form. Please help me improve it (keep the exact same JSON structure and field names, keep "template" as it is, and return the complete JSON only, with no extra text, so I can save it as a .json file).\n\n` + JSON.stringify(cv, null, 2);
+  try { await navigator.clipboard.writeText(text); ok('Copied. Paste it into ChatGPT, then save the answer as a .json file and click "Open a CV file…".'); }
+  catch { downloadBlob(new Blob([text], {type: 'text/plain'}), 'cv-for-chatgpt.txt'); ok('Saved as cv-for-chatgpt.txt in your Downloads. Paste its contents into ChatGPT.'); }
+}
+async function savePDF() {
+  if (dirty) await save();
+  const r = await fetch('/api/pdf', json(cv));
+  if (r.ok) { downloadBlob(await r.blob(), fileName('pdf')); ok('PDF saved to your Downloads.'); return; }
+  ok('The print window opens: choose "Save as PDF" (or "Microsoft Print to PDF") as the printer, then Save.');
+  preview.contentWindow.focus(); preview.contentWindow.print();
+}
+function fileName(kind) { return (cv.person.name || 'CV').trim().replace(/[^a-z0-9]+/gi, '-') + '-CV.' + kind; }
+function downloadBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+async function downloadFile(kind) {
+  const r = await fetch('/api/' + kind, json(cv));
+  if (!r.ok) { fail(await r.text()); return; }
+  downloadBlob(await r.blob(), fileName(kind));
+}
+
+// Notice CV files that appear or change in the folder while the page is open.
+let known = new Set();
+async function watchFolder() {
+  try {
+    const latest = await fetch('/api/profiles').then(r => r.json());
+    const fresh = latest.filter(p => !known.has(p.id) && p.id !== 'sample');
+    const removed = profiles.filter(p => !latest.some(q => q.id === p.id));
+    const broke = latest.filter(p => p.error && !(profiles.find(q => q.id === p.id) || {}).error);
+    const fixed = latest.filter(p => !p.error && (profiles.find(q => q.id === p.id) || {}).error);
+    profiles = latest; latest.forEach(p => known.add(p.id)); renderProfiles();
+    if (fresh.length) {
+      const p = fresh[0];
+      if (p.error) fail(`New file found: ${p.file}\n${p.error}\n\nFix the file and save it; it is checked again automatically.`);
+      else tell(`New CV file found: <b>${esc(p.file)}</b><button onclick="loadProfile('${esc(p.id)}');hush()">Open it</button>`);
+    } else if (fixed.length) {
+      const p = fixed[0]; problem.classList.remove('show');
+      tell(`${esc(p.file)} is fine now.<button onclick="loadProfile('${esc(p.id)}');hush()">Open it</button>`);
+    } else if (broke.length) {
+      fail(`${broke[0].file} changed and cannot be opened any more.\n${broke[0].error}`);
+    } else if (removed.some(p => p.id === profile)) {
+      fail(`The file for this CV (${removed.find(p => p.id === profile).file}) was removed while it was open. Save now to write it again, or open another CV.`);
+    }
+  } catch {}
+}
+
+const initialCV = __INITIAL_CV__, initialProfiles = __INITIAL_PROFILES__, initialTemplates = __INITIAL_TEMPLATES__, initialPreview = __INITIAL_PREVIEW__;
+meta = __INITIAL_META__;
+profiles = initialProfiles; templates = initialTemplates; profile = meta.profile; cv = initialCV;
+profiles.forEach(p => known.add(p.id));
+preview.srcdoc = initialPreview; render();
+ok(profile === 'sample' ? 'Ready. This is the example CV; start typing and your version is saved automatically.' : 'Ready — saved changes stay on this computer.');
+setInterval(watchFolder, 2500);
+</script></body></html>'''
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -216,60 +566,72 @@ class Handler(BaseHTTPRequestHandler):
         if filename: self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers(); self.wfile.write(body)
 
+    def plain(self, message: str, status: int = 200):
+        return self.send(message.encode(), "text/plain; charset=utf-8", status)
+
     def read_json(self):
-        length = int(self.headers.get("Content-Length", "0")); return json.loads(self.rfile.read(length))
+        length = int(self.headers.get("Content-Length", "0")); return json.loads(self.rfile.read(length) or b"null")
+
+    def template_choices(self):
+        return [{"id": key, "label": value.get("label", key)} for key, value in TEMPLATES.items()]
 
     def do_GET(self):
         parsed = urlparse(self.path); route = parsed.path
         if route == "/":
             safe_json = lambda value: json.dumps(value).replace("</", "<\\/")
-            initial_cv = load_cv()
+            profile = default_profile()
+            initial_cv = load_cv(profile)
             page = APP_HTML.replace("__INITIAL_CV__", safe_json(initial_cv))
             page = page.replace("__INITIAL_PROFILES__", safe_json(list_profiles()))
-            choices = [{"id": key, "label": value.get("label", key)} for key, value in TEMPLATES.items()]
-            page = page.replace("__INITIAL_TEMPLATES__", safe_json(choices))
-            return self.send(page.replace("__INITIAL_PREVIEW__", safe_json(render_html(initial_cv))).encode(), "text/html; charset=utf-8")
+            page = page.replace("__INITIAL_TEMPLATES__", safe_json(self.template_choices()))
+            page = page.replace("__INITIAL_META__", safe_json({"profile": profile, "version": VERSION, "folder": str(PROFILES_DIR)}))
+            return self.send(page.replace("__INITIAL_PREVIEW__", safe_json(render_html(initial_cv) + PREVIEW_CSS)).encode(), "text/html; charset=utf-8")
         if route == "/api/cv":
             try:
                 profile = parse_qs(parsed.query).get("profile", [None])[0]
                 return self.send(json.dumps(load_cv(profile)).encode(), "application/json")
             except ValueError as exc:
-                return self.send(str(exc).encode(), "text/plain", HTTPStatus.NOT_FOUND)
+                return self.plain(str(exc), HTTPStatus.NOT_FOUND)
         if route == "/api/profiles": return self.send(json.dumps(list_profiles()).encode(), "application/json")
-        if route == "/api/templates":
-            choices = [{"id": key, "label": value.get("label", key)} for key, value in TEMPLATES.items()]
-            return self.send(json.dumps(choices).encode(), "application/json")
-        self.send(b"Not found", "text/plain", HTTPStatus.NOT_FOUND)
+        if route == "/api/templates": return self.send(json.dumps(self.template_choices()).encode(), "application/json")
+        self.plain("Not found", HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
         route = urlparse(self.path).path
+        if route == "/api/open-folder":
+            try:
+                open_folder(PROFILES_DIR); return self.plain(str(PROFILES_DIR))
+            except OSError as exc:
+                return self.plain(f"The folder is {PROFILES_DIR} but it could not be opened automatically: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
         try: cv = self.read_json()
-        except json.JSONDecodeError as exc: return self.send(str(exc).encode(), "text/plain", HTTPStatus.BAD_REQUEST)
+        except json.JSONDecodeError as exc: return self.plain(f"This is not valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}.", HTTPStatus.BAD_REQUEST)
         if route == "/api/profiles":
             try:
-                requested = str(cv.get("name", "")).strip().lower()
-                profile = re.sub(r"[^a-z0-9]+", "-", requested).strip("-")
-                if not profile or not PROFILE_ID.fullmatch(profile):
-                    raise ValueError("Use a short profile name made of letters and numbers.")
+                profile = new_profile_id(cv.get("name", ""))
+                errors = validate(cv.get("cv"))
+                if errors: raise ValueError(" ".join(errors))
+                if profile in {item["id"] for item in scan_profiles()}:
+                    base, n = profile, 2
+                    while profile in {item["id"] for item in scan_profiles()}: profile = f"{base} {n}"; n += 1
                 saved = save_cv(cv["cv"], profile)
                 return self.send(json.dumps({"profile": saved}).encode(), "application/json")
-            except (KeyError, TypeError, ValueError) as exc:
-                return self.send(str(exc).encode(), "text/plain", HTTPStatus.BAD_REQUEST)
+            except (KeyError, TypeError, AttributeError, ValueError) as exc:
+                return self.plain(str(exc), HTTPStatus.BAD_REQUEST)
         try: document = render_html(cv)
-        except ValueError as exc: return self.send(str(exc).encode(), "text/plain", HTTPStatus.BAD_REQUEST)
-        if route == "/api/preview": return self.send(document.encode(), "text/html; charset=utf-8")
+        except ValueError as exc: return self.plain(str(exc), HTTPStatus.BAD_REQUEST)
+        if route == "/api/preview": return self.send((document + PREVIEW_CSS).encode(), "text/html; charset=utf-8")
         if route == "/api/html": return self.send(document.encode(), "text/html; charset=utf-8", filename="CV.html")
         if route == "/api/pdf":
             try:
                 from weasyprint import HTML
             except ImportError:
-                return self.send(b"Direct PDF download is optional. Use Download HTML, open it in your browser, press Ctrl+P, then choose Save as PDF.", "text/plain", HTTPStatus.SERVICE_UNAVAILABLE)
+                return self.plain("Direct PDF download is optional and the PDF helper is not installed. Use Print / Save as PDF instead: it opens the normal print window, where you choose Save as PDF.", HTTPStatus.SERVICE_UNAVAILABLE)
             return self.send(HTML(string=document, base_url=str(ROOT)).write_pdf(), "application/pdf", filename="CV.pdf")
-        self.send(b"Not found", "text/plain", HTTPStatus.NOT_FOUND)
+        self.plain("Not found", HTTPStatus.NOT_FOUND)
 
     def do_PUT(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/cv": return self.send(b"Not found", "text/plain", HTTPStatus.NOT_FOUND)
+        if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
         try: cv = self.read_json(); errors = validate(cv)
         except json.JSONDecodeError: errors = ["The submitted CV is not valid data."]
         if errors: return self.send(json.dumps({"errors": errors}).encode(), "application/json", HTTPStatus.BAD_REQUEST)
@@ -279,6 +641,14 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             return self.send(json.dumps({"errors": [str(exc)]}).encode(), "application/json", HTTPStatus.BAD_REQUEST)
         self.send(json.dumps({"ok": True, "profile": saved}).encode(), "application/json")
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
+        try:
+            delete_cv(parse_qs(parsed.query).get("profile", [""])[0]); return self.plain("Deleted")
+        except (ValueError, OSError) as exc:
+            return self.plain(str(exc), HTTPStatus.BAD_REQUEST)
 
     def log_message(self, *_): pass
 
@@ -290,7 +660,7 @@ def main():
     if args.render:
         (ROOT / "content" / "cv.html").write_text(render_html(load_cv()), encoding="utf-8"); print(ROOT / "content" / "cv.html"); return
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"CV editor: http://127.0.0.1:{args.port} (local only)")
+    print(f"CV Studio {VERSION}: http://127.0.0.1:{args.port} (local only). CV files live in {PROFILES_DIR}")
     try: server.serve_forever()
     except KeyboardInterrupt: print("\nStopped.")
 

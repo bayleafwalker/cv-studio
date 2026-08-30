@@ -12,6 +12,8 @@ You do **not** need to know Git or use a command line.
 3. Open your Downloads folder, right-click the ZIP file and choose **Extract All**.
 4. Open the extracted `cv-studio` folder and read `START-HERE.md`.
 5. Follow the one-time Python setup, then double-click `start-windows.bat`.
+6. Later, double-click `update-windows.bat` to get the newest version. Your
+   own CV files are kept.
 
 If the release ZIP is unavailable, use the green **Code** button on this page and
 choose **Download ZIP** instead.
@@ -34,8 +36,10 @@ explained in the guide.
 ![Modern single-column sample CV](assets/screenshots/modern-single-column.png)
 
 The editor presents ordinary fields, repeatable cards and show/hide switches. It
-stores a portable local `content/cv.local.json` document, then feeds that document to a
-selected template. The data is not tied to a template, so another template can
+stores portable local JSON documents, then feeds the chosen one to a selected
+template. Any `.json` CV dropped into `content/profiles` (for example one that
+ChatGPT drafted from the copied example) is picked up while the app runs;
+unreadable files are listed with the reason. The data is not tied to a template, so another template can
 be added without making the editor user learn markup or CSS.
 
 ## Start
@@ -48,9 +52,9 @@ make serve
 ```
 
 Open <http://127.0.0.1:8765>. Nothing is sent over the network; the server binds
-only to the loopback address. Click **Save changes** to update your local profile.
-The preview updates while editing. Use **Download PDF** when the PDF helper is
-installed, otherwise use **Download HTML** and print it from the browser.
+only to the loopback address. Changes save automatically.
+The preview updates while editing. **Save as PDF** uses WeasyPrint when it is
+installed and otherwise opens the browser's print dialog for Save as PDF.
 
 ```bash
 python server.py --render  # render without opening the editor
@@ -61,11 +65,16 @@ make test                  # renderer and manifest checks
 
 - `content/cv.sample.json` — safe starter content committed to Git.
 - `content/cv.local.json` — automatically created on the first save and ignored
-  by Git. This is the personal file the app loads thereafter; copy it elsewhere
-  to back it up or move it to another computer.
+  by Git. Extra CVs live in `content/profiles/*.json`; the whole `content`
+  folder (except the sample) is personal and ignored by Git.
 - `templates/` — presentation-only templates. `classic-two-column` reproduces
   the compact 2018 reference family.
 - `server.py` — local editor, validation, HTML rendering and optional PDF export.
+- `update-windows.bat` / `update-windows.ps1` — fetch the latest release ZIP
+  over the installed files, keeping `content`.
+- `.github/workflows/release.yml` — pushing a `vX.Y.Z` tag that matches
+  `pyproject.toml` builds `cv-studio-windows.zip` (`make dist`) and publishes
+  the release the updater downloads.
 - `REQUIREMENTS.md` — product boundary and acceptance criteria.
 
 To make a second visual template, add a renderer to `TEMPLATES` in `server.py`.

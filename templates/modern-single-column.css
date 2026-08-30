@@ -1,16 +1,16 @@
 @page { size: A4; margin: 14mm 15.5mm; }
 * { box-sizing: border-box; }
 html { font-family: "Liberation Sans", Arial, sans-serif; color: #263944; }
-body { margin: 0; font-size: 9.15pt; line-height: 1.34; }
+body { margin: 0; font-size: 9.15pt; line-height: 1.34; overflow-wrap: break-word; }
 .masthead { border-bottom: 2.2pt solid #147084; padding-bottom: 8pt; margin-bottom: 8pt; }
 h1 { margin: 0 0 4pt; font-size: 24pt; line-height: 1; color: #263944; }
 .headline { margin-bottom: 5pt; color: #147084; font-weight: 700; font-size: 11.2pt; }
 .contact-line { color: #62737d; font-size: 8.3pt; display: flex; flex-wrap: wrap; gap: 2pt 8pt; }
 .contact-item { margin: 0; display: inline; }.contact-label { display: none; }.contact-value::after { content: " |"; color: #97a9b1; padding-left: 5pt; }.contact-item:last-child .contact-value::after { content: ""; }
-.contact-link { white-space: nowrap; }
+.contact-link { overflow-wrap: anywhere; }
 .summary { margin: 0 0 7pt; }
 .sidebar-section { display: none; }
 .main-section { margin: 8pt 0 0; }.main-section.page-break { break-before: page; margin-top: 0; }
 h2 { margin: 0 0 5pt; padding-bottom: 3.2pt; border-bottom: .75pt solid #b9cbd2; color: #147084; font-size: 10.4pt; line-height: 1.1; letter-spacing: .15pt; text-transform: uppercase; break-after: avoid; }
-.entry { margin: 0 0 5pt; }.entry-title { margin: 0; color: #263944; font-size: 10pt; line-height: 1.2; font-weight: 700; }.organisation { margin: 1pt 0; color: #62737d; font-size: 8.35pt; }.entry-meta { display: flex; justify-content: space-between; gap: 10pt; color: #62737d; font-size: 8.5pt; }.entry-description { margin: 2pt 0; }ul { margin: 2pt 0 0 11.5pt; padding: 0; }li { margin: 0 0 1.4pt; break-inside: avoid; }.entry, h2 { break-after: avoid; }
+.entry { margin: 0 0 5pt; }.entry-title { margin: 0; color: #263944; font-size: 10pt; line-height: 1.2; font-weight: 700; }.organisation { margin: 1pt 0; color: #62737d; font-size: 8.35pt; }.entry-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2pt 10pt; color: #62737d; font-size: 8.5pt; }.entry-description { margin: 2pt 0; }ul { margin: 2pt 0 0 11.5pt; padding: 0; }li { margin: 0 0 1.4pt; break-inside: avoid; }.entry { break-inside: avoid; }
 @media screen { html { background: #e8ecee; } body { margin: 16px auto; width: 210mm; min-height: 297mm; padding: 14mm 15.5mm; background: white; box-shadow: 0 2px 16px #9aa3a6; } }

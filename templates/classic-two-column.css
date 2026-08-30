@@ -1,10 +1,11 @@
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; }
 html { background: #fff; }
+body { background: linear-gradient(to right, #fafafa 31%, #fff 31%); }
 body { margin: 0; color: #333; font-family: Arial, Helvetica, sans-serif; font-size: 9.2pt; line-height: 1.35; }
 .cv { display: grid; grid-template-columns: 31% 69%; min-height: 297mm; }
-.sidebar { padding: 25mm 10mm 20mm 18mm; background: #fafafa; }
-.main { padding: 21mm 18mm 19mm 13mm; }
+.sidebar { padding: 23mm 8mm 20mm 14mm; overflow-wrap: anywhere; }
+.main { padding: 21mm 16mm 19mm 12mm; overflow-wrap: break-word; }
 h1 { margin: 0 0 3pt; color: #222; font-size: 25pt; font-weight: 400; letter-spacing: -.4pt; }
 .headline { margin: 0 0 8pt; font-size: 11pt; color: #555; }
 .summary { margin: 0 0 16pt; max-width: 95%; color: #444; }
@@ -13,16 +14,19 @@ h1 { margin: 0 0 3pt; color: #222; font-size: 25pt; font-weight: 400; letter-spa
 .contact { margin-bottom: 28pt; }
 .contact-item { margin: 0 0 7pt; }
 .contact-label { display: block; color: #777; font-size: 7.6pt; text-transform: uppercase; letter-spacing: .5pt; }
-.contact-link { font-size: 8.1pt; letter-spacing: -.15pt; white-space: nowrap; }
+.contact-link { font-size: 8.1pt; letter-spacing: -.15pt; }
 .tags { display: flex; flex-wrap: wrap; gap: 5pt 8pt; }
-.tag { white-space: nowrap; }
+.tag { max-width: 100%; }
 .main-section { margin: 0 0 19pt; }
 .main-section.page-break { break-before: page; }
+.main h2, .sidebar h2 { break-after: avoid; }
+.entry { break-inside: avoid; }
+.sidebar-section { break-inside: avoid; }
 .entry { margin: 0 0 13pt; }
 .entry:last-child { margin-bottom: 0; }
 .entry-title { margin: 0; font-size: 10pt; font-weight: 700; line-height: 1.25; }
 .organisation { margin: 1pt 0; font-weight: 700; }
-.entry-meta { display: flex; justify-content: space-between; gap: 10pt; margin: 1pt 0 5pt; color: #666; font-size: 8.4pt; }
+.entry-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2pt 10pt; margin: 1pt 0 5pt; color: #666; font-size: 8.4pt; }
 .entry-description { margin: 0 0 4pt; }
 ul { margin: 3pt 0 0 13pt; padding: 0; }
 li { margin: 0 0 2pt; }

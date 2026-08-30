@@ -1,0 +1,23 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches pyproject.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          test "v$version" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} does not match version $version"; exit 1; }
+      - name: Build cv-studio-windows.zip
+        run: make dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/cv-studio-windows.zip --title "CV Studio ${GITHUB_REF_NAME}" \
+            --notes "Download cv-studio-windows.zip, extract it, read START-HERE.md, and double-click start-windows.bat. Already installed? Double-click update-windows.bat instead."
