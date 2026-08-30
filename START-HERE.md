@@ -52,8 +52,10 @@ to ChatGPT and ask for the complete corrected file.
    Add achievements one per line. Changes are saved automatically.
 4. The page on the right updates as you type and scrolls to the part you are
    editing. Red lines show where each A4 page ends. Use **Move up** and
-   **Move down** to choose the section order. Tick **Start this section on a
-   new page** if you want a deliberate page break.
+   **Move down** to choose the section order. If something sits awkwardly
+   across a page end (it is marked with a dashed outline), hover it in the
+   preview and click **Move to next page**; every section, entry and sidebar
+   block also has a **Start on a new page** switch in the form.
 5. When ready, click **Save as PDF**. On most computers the normal print
    window opens; choose **Save as PDF** (or **Microsoft Print to PDF**) as the
    printer and click Save. That is the normal Windows way to make a PDF.

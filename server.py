@@ -232,7 +232,8 @@ def render_entry(entry: dict, anchor: str = "") -> str:
     bullets = "".join(f"<li>{text(item)}</li>" for item in entry.get("bullets", []) if str(item).strip())
     bullet_html = f"<ul>{bullets}</ul>" if bullets else ""
     organisation_html = f'<p class="organisation">{organisation}</p>' if organisation else ""
-    return f'<article class="entry" data-cv="{anchor}"><h3 class="entry-title">{title}</h3>{organisation_html}{meta}{description}{bullet_html}</article>'
+    breaker = " page-break" if entry.get("page_break_before") else ""
+    return f'<article class="entry{breaker}" data-cv="{anchor}"><h3 class="entry-title">{title}</h3>{organisation_html}{meta}{description}{bullet_html}</article>'
 
 
 def render_parts(cv: dict) -> dict[str, str]:
@@ -243,7 +244,7 @@ def render_parts(cv: dict) -> dict[str, str]:
         for i, item in enumerate(cv["contact"]) if isinstance(item, dict) and shown(item) and item.get("value")
     )
     side = "".join(
-        f'<section class="sidebar-section" data-cv="sidebar_sections.{i}"><h2>{text(section.get("title"))}</h2><div class="tags">' +
+        f'<section class="sidebar-section{" page-break" if section.get("page_break_before") else ""}" data-cv="sidebar_sections.{i}"><h2>{text(section.get("title"))}</h2><div class="tags">' +
         "".join(f'<span class="tag">{text(item)}</span>' for item in section.get("items", []) if str(item).strip()) +
         "</div></section>"
         for i, section in enumerate(cv["sidebar_sections"]) if isinstance(section, dict) and shown(section)
@@ -283,7 +284,7 @@ def render_html(cv: dict) -> str:
     return f'<!doctype html><html><head><meta charset="utf-8"><title>{parts["name"]} — CV</title><style>{css}</style></head><body>{renderer(parts)}</body></html>'
 
 
-PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box-shadow:none!important;width:auto!important;min-height:0!important}.cv-focus{outline:2px solid #147084;outline-offset:3px;border-radius:2px}@media print{.cv-focus{outline:none}}</style>"
+PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box-shadow:none!important;width:auto!important;min-height:0!important}.page-break{padding-top:var(--push,0)!important}.cv-focus{outline:2px solid #147084;outline-offset:3px;border-radius:2px}[data-cv]{position:relative}.cv-handle{position:absolute;top:-2pt;right:0;display:none;border:0;border-radius:4px;padding:3px 7px;background:#147084;color:#fff;font:600 10px system-ui,sans-serif;cursor:pointer;z-index:2}.cv-handle.on{background:#9a3940}[data-cv]:hover>.cv-handle,.cv-split>.cv-handle{display:block}.cv-split{outline:2px dashed #d6626a;outline-offset:3px}@media print{.page-break{padding-top:0!important}.cv-focus,.cv-split{outline:none}.cv-handle{display:none!important}}</style>"
 
 
 APP_HTML = r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CV Studio — a stupidly simple little CV generator</title><link rel="icon" href="data:,"><style>
@@ -354,8 +355,11 @@ function field(label, value, path, area = false) {
 function visible(item, path) {
   return `<label class="toggle"><input type="checkbox" data-path="${path}.visible" ${item.visible === false ? '' : 'checked'}> Show this</label>`;
 }
+function pageBreak(item, path) {
+  return `<label class="toggle"><input type="checkbox" data-path="${path}.page_break_before" ${item.page_break_before ? 'checked' : ''}> Start on a new page</label>`;
+}
 function entry(e, path) {
-  return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${visible(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label>Achievement bullets (one per line)</label><textarea data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
+  return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${visible(e, path)}${pageBreak(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label>Achievement bullets (one per line)</label><textarea data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
 }
 function profileOptions() {
   return profiles.map(p => `<option value="${esc(p.id)}" ${p.id === profile ? 'selected' : ''}>${p.error ? '⚠ ' : ''}${esc(p.label)}${p.error ? ' — cannot be opened' : ''}</option>`).join('');
@@ -375,8 +379,8 @@ function render() {
 <h2>Document style</h2><label>Template</label><select data-template>${options}</select><p class="hint">The style changes presentation only; your content stays the same.</p>
 <h2>About you</h2>${field('Full name', cv.person.name, 'person.name')}${field('Headline', cv.person.headline, 'person.headline')}${field('Short introduction', cv.person.summary, 'person.summary', true)}
 <h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card">${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}
-<h2>Sidebar</h2>${cv.sidebar_sections.map((x, i) => `<div class="card">${visible(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label>Items (one per line)</label><textarea data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}
-<h2>Main CV sections</h2><p class="hint">Move whole sections to set their order. A page break starts that section on a fresh A4 page.</p>
+<h2>Sidebar</h2>${cv.sidebar_sections.map((x, i) => `<div class="card">${visible(x, 'sidebar_sections.' + i)}${pageBreak(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label>Items (one per line)</label><textarea data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}
+<h2>Main CV sections</h2><p class="hint">Move whole sections to set their order. Any section, entry or sidebar block can start on a fresh A4 page; you can also hover an entry in the preview and click <b>Move to next page</b>.</p>
 ${cv.sections.map((s, i) => `<section class="card"><div class="actions"><button class="secondary" data-section-move="${i},-1" ${i === 0 ? 'disabled' : ''}>Move up</button><button class="secondary" data-section-move="${i},1" ${i === cv.sections.length - 1 ? 'disabled' : ''}>Move down</button></div>${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
 <p class="hint">CV Studio ${esc(meta.version)}</p>`;
   bind();
@@ -416,7 +420,39 @@ function fitPreview() {
   sheet.style.transform = `scale(${scale})`;
   sheet.style.marginBottom = (sheet.offsetHeight * (scale - 1)) + 'px';
 }
-preview.onload = () => { fitPreview(); follow(lastPath, false); };
+preview.onload = () => { pushBreaks(); fitPreview(); addHandles(); follow(lastPath, false); };
+// On screen, break-before does nothing, so push each breaking element down to the next page edge (print uses the real break).
+function pushBreaks() {
+  const doc = preview.contentDocument;
+  if (!doc) return;
+  const pageHeight = 297 / 25.4 * 96;
+  doc.querySelectorAll('.page-break').forEach(el => {
+    el.style.setProperty('--push', '0px');
+    const top = el.getBoundingClientRect().top + doc.documentElement.scrollTop, rest = top % pageHeight;
+    if (rest > 1) el.style.setProperty('--push', (pageHeight - rest) + 'px');
+  });
+}
+// Page-break handles inside the preview: hover an entry (or sidebar block) and move it to the next page; split entries are flagged.
+function addHandles() {
+  const doc = preview.contentDocument;
+  if (!doc) return;
+  const pageHeight = 297 / 25.4 * 96;
+  let splits = 0;
+  doc.querySelectorAll('.entry[data-cv], .sidebar-section[data-cv]').forEach(el => {
+    const path = el.dataset.cv, item = get(path), on = !!item.page_break_before;
+    const box = el.getBoundingClientRect(), top = box.top + doc.documentElement.scrollTop, bottom = top + box.height;
+    const split = !on && Math.floor(top / pageHeight) !== Math.floor((bottom - 1) / pageHeight) && box.height < pageHeight * 0.8;
+    if (split) { el.classList.add('cv-split'); splits++; }
+    const b = doc.createElement('button');
+    b.className = 'cv-handle' + (on ? ' on' : '');
+    b.textContent = on ? '↥ Undo page break' : split ? '↧ Split across pages — move to next page' : '↧ Move to next page';
+    b.title = 'This only changes where the page ends; your text stays the same.';
+    b.onclick = e => { e.preventDefault(); set(path + '.page_break_before', !on); lastPath = path; render(); changed(); };
+    el.appendChild(b);
+  });
+  const count = document.querySelector('#pagecount');
+  if (splits) count.textContent += ` · ${splits} ${splits === 1 ? 'entry is' : 'entries are'} split across pages (dashed); click its button to move it.`;
+}
 // The preview follows the field being edited: scroll to and outline the matching part of the CV.
 let lastPath = '';
 function follow(path, smooth = true) {

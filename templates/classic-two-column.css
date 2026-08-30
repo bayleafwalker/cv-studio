@@ -18,7 +18,7 @@ h1 { margin: 0 0 3pt; color: #222; font-size: 25pt; font-weight: 400; letter-spa
 .tags { display: flex; flex-wrap: wrap; gap: 5pt 8pt; }
 .tag { max-width: 100%; }
 .main-section { margin: 0 0 19pt; }
-.main-section.page-break { break-before: page; }
+.main-section.page-break, .entry.page-break, .sidebar-section.page-break { break-before: page; }
 .main h2, .sidebar h2 { break-after: avoid; }
 .entry { break-inside: avoid; }
 .sidebar-section { break-inside: avoid; }
