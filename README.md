@@ -64,6 +64,21 @@ make test                  # renderer and manifest checks
 make e2e                   # browser walkthrough of the editor (needs Node)
 ```
 
+## Hosted mode (internal service)
+
+The same server runs as a container (`Dockerfile`, published to
+`ghcr.io/bayleafwalker/cv-studio` on every `v*` tag). With
+`CV_STUDIO_PERSONS=1` it keeps one folder per person under `/data/persons/`;
+the browser picks a person once (a cookie remembers it) and agents identify
+with a bearer token listed in `/data/tokens.json` as `{"token": "Person"}`.
+`GET /api/openapi.json` describes the JSON API for ChatGPT Actions or an MCP
+client; `GET /api/schema` returns the example document. Nothing is stored
+outside `/data`; PDFs are rendered with WeasyPrint inside the container.
+
+```bash
+docker run -p 8080:8080 -v cv-data:/data ghcr.io/bayleafwalker/cv-studio:latest
+```
+
 ## Structure
 
 - `content/cv.sample.json` — safe starter content committed to Git.

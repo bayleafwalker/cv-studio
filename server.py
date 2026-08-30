@@ -17,8 +17,18 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).resolve().parent
 SAMPLE_SOURCE = ROOT / "content" / "cv.sample.json"
 CONTENT_DIR = Path(os.environ.get("CV_STUDIO_CONTENT") or ROOT / "content")  # personal files; tests point this elsewhere
-LOCAL_SOURCE = CONTENT_DIR / "cv.local.json"
-PROFILES_DIR = CONTENT_DIR / "profiles"
+PERSONS_MODE = os.environ.get("CV_STUDIO_PERSONS", "") not in ("", "0", "false")  # hosted: one folder per person under persons/
+PERSON_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$")
+import contextvars
+CONTENT: contextvars.ContextVar[Path] = contextvars.ContextVar("content", default=CONTENT_DIR)
+
+
+def local_source() -> Path:
+    return CONTENT.get() / "cv.local.json"
+
+
+def profiles_dir() -> Path:
+    return CONTENT.get() / "profiles"
 PROFILE_ID = re.compile(r'^[^.\\/:*?"<>|\x00-\x1f][^\\/:*?"<>|\x00-\x1f]{0,99}$')
 TEMPLATE_DIR = ROOT / "templates"
 
@@ -64,14 +74,14 @@ def scan_profiles() -> list[dict]:
     """Every CV file the app can see, including ones it cannot read, with a plain-language problem."""
     found: list[dict] = [{"id": "sample", "label": "Example CV", "path": SAMPLE_SOURCE, "file": SAMPLE_SOURCE.name}]
     candidates: list[Path] = []
-    if LOCAL_SOURCE.exists():
-        candidates.append(LOCAL_SOURCE)
-    for folder in (LOCAL_SOURCE.parent, PROFILES_DIR):
+    if local_source().exists():
+        candidates.append(local_source())
+    for folder in (local_source().parent, profiles_dir()):
         if folder.is_dir():
-            candidates += sorted(p for p in folder.glob("*.json") if p not in (SAMPLE_SOURCE, LOCAL_SOURCE) and not p.name.startswith("."))
+            candidates += sorted(p for p in folder.glob("*.json") if p not in (SAMPLE_SOURCE, local_source()) and not p.name.startswith("."))
     seen = {"sample"}
     for path in candidates:
-        if path == LOCAL_SOURCE:
+        if path == local_source():
             item = {"id": "my-cv", "label": "My CV", "path": path}
         else:
             profile_id = path.name.removesuffix(".json").removesuffix(".local")
@@ -80,7 +90,8 @@ def scan_profiles() -> list[dict]:
                 item["error"] = "Rename this file: names may not start with a dot or contain \\ / : * ? \" < > |."
             elif profile_id in seen:
                 item["error"] = "Another CV file already has this name. Rename one of them."
-        item["file"] = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+        base = ROOT if path.is_relative_to(ROOT) else CONTENT.get()
+        item["file"] = str(path.relative_to(base)) if path.is_relative_to(base) else path.name
         item.setdefault("error", file_problem(path))
         seen.add(item["id"])
         found.append(item)
@@ -109,13 +120,13 @@ def profile_path(profile: str) -> Path:
     if profile == "sample":
         return SAMPLE_SOURCE
     if profile == "my-cv":
-        return LOCAL_SOURCE
+        return local_source()
     if not PROFILE_ID.fullmatch(profile) or ".." in profile:
         raise ValueError("A CV name may not start with a dot or contain \\ / : * ? \" < > |.")
     for item in scan_profiles():
         if item["id"] == profile:
             return item["path"]
-    return PROFILES_DIR / f"{profile}.local.json"
+    return profiles_dir() / f"{profile}.local.json"
 
 
 def default_profile() -> str:
@@ -175,7 +186,7 @@ def rename_cv(profile: str, name: str) -> str:
         raise ValueError("Another CV already has that name.")
     if target_id == profile:
         return profile
-    target = PROFILES_DIR / f"{target_id}.local.json"
+    target = profiles_dir() / f"{target_id}.local.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     os.replace(source, target)
     return target_id
@@ -236,6 +247,34 @@ def pdf_bytes(document: str) -> bytes:
         raise RuntimeError(f"{Path(browser).name} could not make the PDF. Use the print window instead. ({' / '.join(p for p in problems if p)})")
     finally:
         shutil.rmtree(directory, ignore_errors=True)
+
+
+def persons_dir() -> Path:
+    return CONTENT_DIR / "persons"
+
+
+def list_persons() -> list[str]:
+    if not persons_dir().is_dir():
+        return []
+    return sorted(p.name for p in persons_dir().iterdir() if p.is_dir() and PERSON_ID.fullmatch(p.name))
+
+
+def person_folder(person: str) -> Path:
+    if not PERSON_ID.fullmatch(person) or ".." in person:
+        raise ValueError("A person's name may only use letters, numbers, spaces, dots, dashes or underscores.")
+    return persons_dir() / person
+
+
+def token_person(token: str) -> str | None:
+    """Agents (ChatGPT, Claude) identify with a bearer token listed in <data>/tokens.json as {"token": "person"}."""
+    path = CONTENT_DIR / "tokens.json"
+    if not token or not path.is_file():
+        return None
+    try:
+        person = json.loads(path.read_text(encoding="utf-8")).get(token)
+    except (OSError, ValueError):
+        return None
+    return person if isinstance(person, str) and person in list_persons() else None
 
 
 def open_folder(path: Path) -> None:
@@ -379,17 +418,82 @@ PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box
 STATIC_DIR = ROOT / "static"
 
 
+def openapi(base_url: str) -> dict:
+    cv_schema = {"type": "object", "description": "A CV document. Use GET /api/schema for a complete example; keep every field name.",
+                 "required": ["template", "person", "contact", "sidebar_sections", "sections"]}
+    profile_param = {"name": "profile", "in": "query", "required": True, "schema": {"type": "string"},
+                     "description": "CV id from GET /api/profiles (for example 'my-cv' or 'Product engineer')."}
+    return {
+        "openapi": "3.1.0",
+        "info": {"title": "CV Studio", "version": VERSION,
+                 "description": "Read and update a person's CVs. Every CV is a JSON document rendered by CV Studio into a PDF; the person reviews it in the editor."},
+        "servers": [{"url": base_url}],
+        "components": {"securitySchemes": {"bearer": {"type": "http", "scheme": "bearer"}}, "schemas": {"CV": cv_schema}},
+        "security": [{"bearer": []}],
+        "paths": {
+            "/api/schema": {"get": {"operationId": "getExampleCV", "summary": "Complete example CV showing the JSON structure and available templates",
+                                     "responses": {"200": {"description": "Example", "content": {"application/json": {"schema": cv_schema}}}}}},
+            "/api/profiles": {"get": {"operationId": "listCVs", "summary": "List the person's CVs", "responses": {"200": {"description": "Ids, labels and any file problems"}}},
+                              "post": {"operationId": "createCV", "summary": "Create a new CV under a name",
+                                       "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["name", "cv"],
+                                                       "properties": {"name": {"type": "string"}, "cv": cv_schema}}}}},
+                                       "responses": {"200": {"description": "The id of the new CV"}, "400": {"description": "What is wrong with the CV"}}}},
+            "/api/cv": {"get": {"operationId": "getCV", "summary": "Read one CV", "parameters": [profile_param], "responses": {"200": {"description": "The CV"}, "404": {"description": "No such CV"}}},
+                        "put": {"operationId": "updateCV", "summary": "Replace one CV (send the complete document)", "parameters": [profile_param],
+                                "requestBody": {"required": True, "content": {"application/json": {"schema": cv_schema}}},
+                                "responses": {"200": {"description": "Saved"}, "400": {"description": "Validation errors, as a list"}}}},
+        },
+    }
+
+
 def app_html() -> str:
     return (STATIC_DIR / "app.html").read_text(encoding="utf-8")
 
 
 
 class Handler(BaseHTTPRequestHandler):
+    person: str | None = None
+    extra_headers: list[tuple[str, str]]
+
     def send(self, body: bytes, content_type: str, status: int = 200, filename: str | None = None):
         self.send_response(status); self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         if filename: self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        for name, value in getattr(self, "extra_headers", []): self.send_header(name, value)
         self.end_headers(); self.wfile.write(body)
+
+    def cookie(self, name: str) -> str | None:
+        from http.cookies import SimpleCookie
+        jar = SimpleCookie(self.headers.get("Cookie", ""))
+        return jar[name].value if name in jar else None
+
+    def set_person_cookie(self, person: str | None):
+        value = f"cv_person={person}; Path=/; Max-Age=31536000; SameSite=Lax" if person else "cv_person=; Path=/; Max-Age=0"
+        self.extra_headers = getattr(self, "extra_headers", []) + [("Set-Cookie", value)]
+
+    def resolve_person(self) -> bool:
+        """In persons mode, pick the folder for this request from a bearer token or the cookie. False = nobody chosen yet."""
+        self.extra_headers = []
+        self.person = None
+        CONTENT.set(CONTENT_DIR)
+        if not PERSONS_MODE:
+            return True
+        auth = self.headers.get("Authorization", "")
+        person = token_person(auth[7:].strip()) if auth.lower().startswith("bearer ") else None
+        if not person:
+            candidate = self.cookie("cv_person")
+            person = candidate if candidate and candidate in list_persons() else None
+        if not person:
+            return False
+        self.person = person
+        CONTENT.set(person_folder(person))
+        return True
+
+    def chooser_page(self) -> bytes:
+        options = "".join(f'<button onclick="pick({json.dumps(p)})">{html.escape(p)}</button>' for p in list_persons())
+        return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CV Studio — who is editing?</title><link rel="stylesheet" href="/static/app.css"><style>.who{{max-width:520px;margin:8vh auto;padding:0 20px}}.who button{{display:block;width:100%;margin:8px 0;padding:14px;font-size:16px}}.who input{{padding:12px;font-size:16px}}</style></head><body><div class="who"><h1>Whose CV?</h1><p class="hint">Each person has their own folder of CVs on this server. Pick yourself; this browser remembers the choice.</p>{options}<h2>Someone new</h2><input id="name" placeholder="First name"><button class="secondary" onclick="pick(document.querySelector('#name').value, true)">Start</button><div id="problem" class="problem"></div></div><script>
+async function pick(name, create) {{ const r = await fetch(create ? '/api/persons' : '/api/person', {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{name}})}}); if (r.ok) location.href = '/'; else {{ const p = document.querySelector('#problem'); p.textContent = await r.text(); p.classList.add('show'); }} }}
+</script></body></html>""".encode()
 
     def plain(self, message: str, status: int = 200):
         return self.send(message.encode(), "text/plain; charset=utf-8", status)
@@ -402,21 +506,38 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path); route = parsed.path
+        if route in ("/health", "/ready"): self.extra_headers = []; return self.plain("ok")
+        if route.startswith("/static/"): return self.static(route)
+        if route == "/api/openapi.json":
+            self.extra_headers = []
+            host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host", "127.0.0.1")
+            scheme = self.headers.get("X-Forwarded-Proto", "http")
+            return self.send(json.dumps(openapi(f"{scheme}://{host}"), indent=2).encode(), "application/json")
+        if route == "/api/schema": self.extra_headers = []; return self.send(SAMPLE_SOURCE.read_bytes(), "application/json")
+        if route == "/api/persons": self.extra_headers = []; return self.send(json.dumps(list_persons()).encode(), "application/json")
+        if not self.resolve_person():
+            if route == "/": return self.send(self.chooser_page(), "text/html; charset=utf-8")
+            return self.plain("Choose a person first (open the site in a browser) or send a bearer token.", HTTPStatus.UNAUTHORIZED)
         if route == "/":
             profile = default_profile()
             initial_cv = load_cv(profile)
             initial = {"cv": initial_cv, "profiles": list_profiles(), "templates": self.template_choices(),
                        "preview": render_html(initial_cv) + preview_css(initial_cv),
-                       "meta": {"profile": profile, "version": VERSION, "folder": str(PROFILES_DIR)}}
+                       "meta": {"profile": profile, "version": VERSION, "folder": str(profiles_dir()), "person": self.person, "hosted": PERSONS_MODE}}
             page = app_html().replace("__INITIAL__", json.dumps(initial).replace("</", "<\\/"))
             return self.send(page.encode(), "text/html; charset=utf-8")
-        if route.startswith("/static/"):
+        self.api_get(parsed, route)
+
+    def static(self, route: str):
+            self.extra_headers = []
             name = route.removeprefix("/static/")
             target = STATIC_DIR / name
             if "/" in name or not target.is_file(): return self.plain("Not found", HTTPStatus.NOT_FOUND)
             kind = {"css": "text/css", "js": "text/javascript"}.get(target.suffix[1:], "application/octet-stream")
             self.send_response(200); self.send_header("Content-Type", kind + "; charset=utf-8"); self.send_header("Cache-Control", "no-cache")
             body = target.read_bytes(); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); return
+
+    def api_get(self, parsed, route):
         if route == "/api/cv":
             try:
                 profile = parse_qs(parsed.query).get("profile", [None])[0]
@@ -429,11 +550,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
-        if route == "/api/open-folder":
+        if route in ("/api/person", "/api/persons"):
+            self.extra_headers = []
             try:
-                open_folder(PROFILES_DIR); return self.plain(str(PROFILES_DIR))
+                name = str(self.read_json().get("name", "")).strip()
+                if route == "/api/persons":
+                    person_folder(name).joinpath("profiles").mkdir(parents=True, exist_ok=True)
+                elif name not in list_persons():
+                    raise ValueError("No such person.")
+                self.set_person_cookie(name)
+                return self.send(json.dumps({"person": name}).encode(), "application/json")
+            except (AttributeError, ValueError, OSError, json.JSONDecodeError) as exc:
+                return self.plain(str(exc) or "Give a name.", HTTPStatus.BAD_REQUEST)
+        if route == "/api/leave":
+            self.extra_headers = []; self.set_person_cookie(None); return self.plain("ok")
+        if not self.resolve_person(): return self.plain("Choose a person first or send a bearer token.", HTTPStatus.UNAUTHORIZED)
+        if route == "/api/open-folder":
+            if PERSONS_MODE: return self.plain(f"On the server the files are in {profiles_dir()}; download a backup instead.", HTTPStatus.BAD_REQUEST)
+            try:
+                open_folder(profiles_dir()); return self.plain(str(profiles_dir()))
             except OSError as exc:
-                return self.plain(f"The folder is {PROFILES_DIR} but it could not be opened automatically: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
+                return self.plain(f"The folder is {profiles_dir()} but it could not be opened automatically: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
         try: cv = self.read_json()
         except json.JSONDecodeError as exc: return self.plain(f"This is not valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}.", HTTPStatus.BAD_REQUEST)
         if route == "/api/rename":
@@ -467,6 +604,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PUT(self):
         parsed = urlparse(self.path)
+        if not self.resolve_person(): return self.plain("Choose a person first or send a bearer token.", HTTPStatus.UNAUTHORIZED)
         if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
         try: cv = self.read_json(); errors = validate(cv)
         except json.JSONDecodeError: errors = ["The submitted CV is not valid data."]
@@ -480,6 +618,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
+        if not self.resolve_person(): return self.plain("Choose a person first or send a bearer token.", HTTPStatus.UNAUTHORIZED)
         if parsed.path != "/api/cv": return self.plain("Not found", HTTPStatus.NOT_FOUND)
         try:
             delete_cv(parse_qs(parsed.query).get("profile", [""])[0]); return self.plain("Deleted")
@@ -492,11 +631,13 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--render", action="store_true", help="write content/cv.html and exit")
     parser.add_argument("--port", type=int, default=8765, help="local web port (default: 8765)")
+    parser.add_argument("--host", default="127.0.0.1", help="address to listen on (default: loopback only; 0.0.0.0 inside a container)")
     args = parser.parse_args()
     if args.render:
         (ROOT / "content" / "cv.html").write_text(render_html(load_cv()), encoding="utf-8"); print(ROOT / "content" / "cv.html"); return
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"CV Studio {VERSION}: http://127.0.0.1:{args.port} (local only). CV files live in {PROFILES_DIR}")
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    where = "local only" if args.host == "127.0.0.1" else f"listening on {args.host}"
+    print(f"CV Studio {VERSION}: http://127.0.0.1:{args.port} ({where}). CV files live in {CONTENT_DIR}" + (" per person" if PERSONS_MODE else ""))
     try: server.serve_forever()
     except KeyboardInterrupt: print("\nStopped.")
 

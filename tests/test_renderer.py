@@ -28,40 +28,37 @@ class RendererTests(unittest.TestCase):
 
     def test_save_is_a_readable_round_trip(self):
         sample = load_cv("sample")
-        original = server.LOCAL_SOURCE
         with tempfile.TemporaryDirectory() as directory:
-            server.LOCAL_SOURCE = Path(directory) / "cv.local.json"
+            token = server.CONTENT.set(Path(directory))
             try:
                 server.save_cv(sample)
                 self.assertEqual(server.load_cv()["person"]["name"], "Your Name")
             finally:
-                server.LOCAL_SOURCE = original
+                server.CONTENT.reset(token)
 
     def test_named_profiles_are_isolated(self):
         sample = load_cv("sample")
-        old_local, old_profiles = server.LOCAL_SOURCE, server.PROFILES_DIR
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            server.LOCAL_SOURCE, server.PROFILES_DIR = root / "cv.local.json", root / "profiles"
+            token = server.CONTENT.set(root)
             try:
                 server.save_cv(sample, "product-manager")
                 self.assertEqual(server.load_cv("product-manager")["person"]["name"], "Your Name")
                 self.assertIn("product-manager", {p["id"] for p in server.list_profiles()})
             finally:
-                server.LOCAL_SOURCE, server.PROFILES_DIR = old_local, old_profiles
+                server.CONTENT.reset(token)
 
     def test_dropped_in_files_are_found_and_problems_explained(self):
         sample = load_cv("sample")
-        old_local, old_profiles = server.LOCAL_SOURCE, server.PROFILES_DIR
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            server.LOCAL_SOURCE, server.PROFILES_DIR = root / "cv.local.json", root / "profiles"
-            server.PROFILES_DIR.mkdir()
+            token = server.CONTENT.set(root)
+            server.profiles_dir().mkdir()
             try:
-                (server.PROFILES_DIR / "cv_airlife_product_engineer.local.json").write_text(
+                (server.profiles_dir() / "cv_airlife_product_engineer.local.json").write_text(
                     server.json.dumps(sample), encoding="utf-8")
-                (server.PROFILES_DIR / "Broken file.json").write_text("{not json", encoding="utf-8")
-                (server.PROFILES_DIR / "no-name.json").write_text('{"template": "classic-two-column"}', encoding="utf-8")
+                (server.profiles_dir() / "Broken file.json").write_text("{not json", encoding="utf-8")
+                (server.profiles_dir() / "no-name.json").write_text('{"template": "classic-two-column"}', encoding="utf-8")
                 found = {p["id"]: p for p in server.list_profiles()}
                 self.assertIsNone(found["cv_airlife_product_engineer"].get("error"))
                 self.assertEqual(found["cv_airlife_product_engineer"]["label"], "Airlife product engineer")
@@ -75,26 +72,52 @@ class RendererTests(unittest.TestCase):
                 server.delete_cv("Broken file")
                 self.assertNotIn("Broken file", {p["id"] for p in server.list_profiles()})
             finally:
-                server.LOCAL_SOURCE, server.PROFILES_DIR = old_local, old_profiles
+                server.CONTENT.reset(token)
 
     def test_rename_moves_the_file_and_links_are_clickable(self):
         sample = load_cv("sample")
-        old_local, old_profiles = server.LOCAL_SOURCE, server.PROFILES_DIR
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            server.LOCAL_SOURCE, server.PROFILES_DIR = root / "cv.local.json", root / "profiles"
+            token = server.CONTENT.set(root)
             try:
                 server.save_cv(sample, "my-cv")
                 self.assertEqual(server.rename_cv("my-cv", "Product engineer"), "Product engineer")
-                self.assertFalse(server.LOCAL_SOURCE.exists())
+                self.assertFalse(server.local_source().exists())
                 self.assertEqual(load_cv("Product engineer")["person"]["name"], "Your Name")
                 with self.assertRaises(ValueError):
                     server.rename_cv("sample", "x")
             finally:
-                server.LOCAL_SOURCE, server.PROFILES_DIR = old_local, old_profiles
+                server.CONTENT.reset(token)
         rendered = render_html(sample)
         self.assertIn('href="mailto:your.name@example.com"', rendered)
         self.assertIn('href="https://linkedin.com/in/yourname"', rendered)
+
+    def test_persons_have_separate_folders_and_tokens(self):
+        old_dir = server.CONTENT_DIR
+        with tempfile.TemporaryDirectory() as directory:
+            server.CONTENT_DIR = Path(directory)
+            try:
+                self.assertEqual(server.list_persons(), [])
+                server.person_folder("Anna").joinpath("profiles").mkdir(parents=True)
+                server.person_folder("Juha").joinpath("profiles").mkdir(parents=True)
+                self.assertEqual(server.list_persons(), ["Anna", "Juha"])
+                with self.assertRaises(ValueError):
+                    server.person_folder("../etc")
+                (server.CONTENT_DIR / "tokens.json").write_text('{"secret-1": "Anna", "stale": "Nobody"}', encoding="utf-8")
+                self.assertEqual(server.token_person("secret-1"), "Anna")
+                self.assertIsNone(server.token_person("stale"))
+                self.assertIsNone(server.token_person(""))
+                token = server.CONTENT.set(server.person_folder("Anna"))
+                try:
+                    server.save_cv(load_cv("sample"), "Anna's CV")
+                    self.assertTrue((server.person_folder("Anna") / "profiles" / "Anna's CV.local.json").exists())
+                finally:
+                    server.CONTENT.reset(token)
+                spec = server.openapi("https://cv.example")
+                self.assertEqual(spec["servers"][0]["url"], "https://cv.example")
+                self.assertIn("/api/cv", spec["paths"])
+            finally:
+                server.CONTENT_DIR = old_dir
 
     def test_preview_has_anchors_for_following_the_editor(self):
         rendered = render_html(load_cv("sample"))

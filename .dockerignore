@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+content/*.local.json
+content/profiles
+content/cv.html
+dist
+tests/e2e/node_modules
+assets
