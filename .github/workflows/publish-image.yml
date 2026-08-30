@@ -29,7 +29,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/cv-studio:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/cv-studio:sha-${{ github.sha }}
-      - uses: actions/attest@v2
+      - uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/cv-studio
           subject-digest: ${{ steps.push.outputs.digest }}
