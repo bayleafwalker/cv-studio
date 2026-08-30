@@ -150,6 +150,11 @@ class RendererTests(unittest.TestCase):
                     c.request(method, path, body=body, headers=headers or {}); r = c.getresponse(); data = r.read(); c.close()
                     return r.status, data
                 pub = {"X-CV-Studio-Public": "1"}
+                import io, contextlib
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    self.assertEqual(call("GET", "/api/schema", {**pub, "Cf-Connecting-Ip": "203.0.113.9"})[0], 200)
+                self.assertIn("public 203.0.113.9 person=- GET /api/schema -> 200", buffer.getvalue())
                 self.assertEqual(call("GET", "/", pub)[0], 404)                       # editor is never public
                 self.assertEqual(call("GET", "/static/app.js", pub)[0], 404)
                 self.assertEqual(call("POST", "/api/persons", pub, '{"name":"X"}')[0], 404)

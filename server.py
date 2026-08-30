@@ -533,6 +533,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer"); self.send_header("Cache-Control", "no-store")
         for name, value in getattr(self, "extra_headers", []): self.send_header(name, value)
         self.end_headers(); self.wfile.write(body)
+        self.audit(status)
 
     server_version = "CVStudio"  # no Python/BaseHTTP version leak
     sys_version = ""
