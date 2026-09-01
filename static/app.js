@@ -18,11 +18,13 @@ function visible(item, path) {
 function pageBreak(item, path) {
   return `<label class="toggle"><input type="checkbox" data-path="${path}.page_break_before" ${item.page_break_before ? 'checked' : ''}> Start on a new page</label>`;
 }
-function mover(path, i, n) {
-  return `<span class="mini"><button class="secondary" data-move="${path},${i},-1" ${i === 0 ? 'disabled' : ''} title="Move up">▲</button><button class="secondary" data-move="${path},${i},1" ${i === n - 1 ? 'disabled' : ''} title="Move down">▼</button></span>`;
+// Every card starts with one control strip that names what the buttons act on, so a whole section and
+// one entry inside it can no longer be mistaken for each other.
+function controls(scope, path, i, n, remove = true) {
+  return `<div class="controls"><span class="scope">${scope}</span><button class="secondary" data-move="${path},${i},-1" ${i === 0 ? 'disabled' : ''} title="Move this ${scope.toLowerCase()} up">▲ Up</button><button class="secondary" data-move="${path},${i},1" ${i === n - 1 ? 'disabled' : ''} title="Move this ${scope.toLowerCase()} down">▼ Down</button>${remove ? `<button class="remove" data-remove="${path}.${i}">Remove</button>` : ''}</div>`;
 }
 function entry(e, path, i, n) {
-  return `<div class="card"><button class="remove" data-remove="${path}">Remove</button>${mover(path.replace(/\.\d+$/, ''), i, n)}${visible(e, path)}${pageBreak(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label for="${fid(path + '.bullets')}">Achievement bullets (one per line)</label><textarea id="${fid(path + '.bullets')}" data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
+  return `<div class="card">${controls('Entry', path.replace(/\.\d+$/, ''), i, n)}${visible(e, path)}${pageBreak(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label for="${fid(path + '.bullets')}">Achievement bullets (one per line)</label><textarea id="${fid(path + '.bullets')}" data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
 }
 function profileOptions() {
   return profiles.map(p => `<option value="${esc(p.id)}" ${p.id === profile ? 'selected' : ''}>${p.error ? '⚠ ' : ''}${esc(p.label)}${p.error ? ' — cannot be opened' : ''}</option>`).join('');
@@ -41,16 +43,24 @@ ${meta.hosted ? `<div class="card"><b>Your CVs are kept on this server</b> under
 <p class="hint">Want ChatGPT to draft one? Click <b>Copy example for ChatGPT</b>, paste it into the chat, save the answer as a <code>.json</code> file, then click <b>Open a CV file…</b> (or drop the file onto this window, or put it in the CV folder).</p>
 <h2>Document style</h2><label for="f-template">Template</label><select id="f-template" data-template>${options}</select><p class="hint">The style changes presentation only; your content stays the same.</p>
 <h2>About you</h2>${field('Full name', cv.person.name, 'person.name')}${field('Headline', cv.person.headline, 'person.headline')}${field('Short introduction', cv.person.summary, 'person.summary', true)}
-<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card"><button class="remove" data-remove="contact.${i}">Remove</button>${mover('contact', i, cv.contact.length)}${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}<button class="secondary" data-add-contact>Add contact detail</button>
-<h2>Sidebar</h2><p class="hint">Short lists such as skills and languages. In the modern style these appear as compact lines under the introduction.</p>${cv.sidebar_sections.map((x, i) => `<div class="card"><button class="remove" data-remove="sidebar_sections.${i}">Remove</button>${mover('sidebar_sections', i, cv.sidebar_sections.length)}${visible(x, 'sidebar_sections.' + i)}${pageBreak(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label for="${fid('sidebar_sections.' + i + '.items')}">Items (one per line)</label><textarea id="${fid('sidebar_sections.' + i + '.items')}" data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}<button class="secondary" data-add-sidebar>Add sidebar block</button>
-<h2>Main CV sections</h2><p class="hint">Move whole sections to set their order. Any section, entry or sidebar block can start on a fresh A4 page; you can also hover an entry in the preview and click <b>Move to next page</b>.</p>
-${cv.sections.map((s, i) => `<section class="card"><div class="actions"><button class="secondary" data-section-move="${i},-1" ${i === 0 ? 'disabled' : ''}>Move up</button><button class="secondary" data-section-move="${i},1" ${i === cv.sections.length - 1 ? 'disabled' : ''}>Move down</button></div>${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`, j, s.entries.length)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
+<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card">${controls('Contact', 'contact', i, cv.contact.length)}${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}<button class="secondary" data-add-contact>Add contact detail</button>
+<h2>Sidebar</h2><p class="hint">Short lists such as skills and languages. In the modern style these appear as compact lines under the introduction.</p>${cv.sidebar_sections.map((x, i) => `<div class="card">${controls('Sidebar block', 'sidebar_sections', i, cv.sidebar_sections.length)}${visible(x, 'sidebar_sections.' + i)}${pageBreak(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label for="${fid('sidebar_sections.' + i + '.items')}">Items (one per line)</label><textarea id="${fid('sidebar_sections.' + i + '.items')}" data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}<button class="secondary" data-add-sidebar>Add sidebar block</button>
+<h2>Main CV sections</h2><p class="hint">The tinted strip at the top of a card says what its buttons move: a whole <b>section</b>, or one <b>entry</b> inside it. Any section, entry or sidebar block can start on a fresh A4 page; on a computer you can also hover an entry in the preview and click <b>Next page</b>.</p>
+${cv.sections.map((s, i) => `<section class="card">${controls('Section', 'sections', i, cv.sections.length, false)}${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`, j, s.entries.length)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
 <p class="hint">CV Studio ${esc(meta.version)}${meta.person ? ` · editing as <b>${esc(meta.person)}</b> · <a href="#" onclick="leave();return false">switch person</a>` : ''}</p>`;
   bind();
 }
 function get(path) { return path.split('.').reduce((o, k) => o[k], cv); }
 function set(path, value) { const p = path.split('.'), key = p.pop(), o = p.reduce((x, k) => x[k], cv); o[key] = value; }
+// A text area that is shorter than its text scrolls inside itself, and then it swallows the wheel and
+// the touch gesture so the editor will not scroll. Growing it to fit removes both problems.
+function autosize(el) {
+  el.style.height = 'auto';
+  if (el.scrollHeight) el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + 'px';
+}
+function sizeFields() { form.querySelectorAll('textarea').forEach(autosize); }
 function bind() {
+  form.querySelectorAll('textarea').forEach(el => { autosize(el); el.addEventListener('input', () => autosize(el)); });
   form.querySelectorAll('[data-path]').forEach(el => el.oninput = () => { set(el.dataset.path, el.type === 'checkbox' ? el.checked : el.value); changed(); });
   form.querySelector('[data-template]').onchange = e => { cv.template = e.target.value; changed(); };
   form.querySelector('[data-profile]').onchange = e => loadProfile(e.target.value);
@@ -61,7 +71,6 @@ function bind() {
   const addC = form.querySelector('[data-add-contact]'); if (addC) addC.onclick = () => { cv.contact.push({label: 'Website', value: '', visible: true}); render(); changed(); form.querySelector(`[data-path="contact.${cv.contact.length - 1}.value"]`).focus(); };
   const addS = form.querySelector('[data-add-sidebar]'); if (addS) addS.onclick = () => { cv.sidebar_sections.push({title: 'New block', visible: true, items: []}); render(); changed(); form.querySelector(`[data-path="sidebar_sections.${cv.sidebar_sections.length - 1}.title"]`).select(); };
   form.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { cv.sections[+b.dataset.add].entries.push({title: 'New entry', organisation: '', dates: '', location: '', description: '', bullets: [], visible: true}); render(); changed(); });
-  form.querySelectorAll('[data-section-move]').forEach(b => b.onclick = () => { const [i, d] = b.dataset.sectionMove.split(',').map(Number), to = i + d; if (to < 0 || to >= cv.sections.length) return; [cv.sections[i], cv.sections[to]] = [cv.sections[to], cv.sections[i]]; render(); changed(); });
 }
 
 const undoStack = [];
@@ -78,7 +87,10 @@ function updatePreview() {
     preview.srcdoc = await r.text();
   }, 120);
 }
-preview.onload = () => { paginate(); fitPreview(); addHandles(); addClickToEdit(); follow(lastPath, false); };
+preview.onload = () => { relayout(); addClickToEdit(); follow(lastPath, false); };
+// Also run after the preview is unhidden on a narrow screen: while it was hidden every block measured
+// zero high, which made addHandles() call them all "too long for one page".
+function relayout() { paginate(); fitPreview(); addHandles(); }
 const MM = 96 / 25.4, PAGE = 297 * MM;
 function margins() { return (templates.find(t => t.id === cv.template) || {}).margins || {top: 0, right: 0, bottom: 0, left: 0}; }
 // Screen preview of print pagination: blocks that would cross the bottom margin are pushed to the next page's
@@ -124,7 +136,14 @@ function editFrom(path) {
   const first = form.querySelector(`[data-path="${path}.title"], [data-path="${path}.name"], [data-path="${path}.value"], [data-path="${path}.label"], [data-path^="${path}."]:not([type=checkbox]), [data-items="${path}"]`);
   if (!first) return;
   document.body.classList.remove('show-preview'); const t = document.querySelector('.viewtoggle'); if (t) t.textContent = '👁 Show the CV';
+  sizeFields();  // the editor was hidden, so nothing in it could be measured
   first.scrollIntoView({block: 'center', behavior: 'smooth'}); first.focus({preventScroll: true});
+}
+// Narrow screens show either the editor or the preview; whichever reappears has to be measured again.
+function toggleView(button) {
+  const showing = document.body.classList.toggle('show-preview');
+  button.textContent = showing ? '✎ Back to editing' : '👁 Show the CV';
+  relayout(); sizeFields();
 }
 function addClickToEdit() {
   const doc = preview.contentDocument;
@@ -135,19 +154,22 @@ function addClickToEdit() {
 // Page-break handles inside the preview: hover an entry (or sidebar block) and move it to the next page; split entries are flagged.
 function addHandles() {
   const doc = preview.contentDocument;
-  if (!doc) return;
+  if (!doc || !doc.body.getBoundingClientRect().height) return;  // hidden preview: nothing can be measured yet
   const pageHeight = PAGE;
   let splits = 0;
+  doc.querySelectorAll('.cv-handle').forEach(b => b.remove());  // safe to run again after a relayout
   doc.querySelectorAll('.entry[data-cv], .sidebar-section[data-cv]').forEach(el => {
     const path = el.dataset.cv, item = get(path), on = !!item.page_break_before;
     const push = parseFloat(el.style.getPropertyValue('--push')) || 0;
     const box = el.getBoundingClientRect(), top = box.top + doc.documentElement.scrollTop + push, bottom = top + box.height - push;
-    const split = !on && Math.floor(top / pageHeight) !== Math.floor((bottom - 1) / pageHeight);
-    if (split) { el.classList.add('cv-split'); splits++; }
+    const split = !on && box.height > 0 && Math.floor(top / pageHeight) !== Math.floor((bottom - 1) / pageHeight);
+    el.classList.toggle('cv-split', split);
+    if (split) splits++;
     const b = doc.createElement('button');
     b.className = 'cv-handle' + (on ? ' on' : '');
-    b.textContent = on ? '↥ Undo page break' : split ? '↧ Too long for one page — move to next page' : '↧ Move to next page';
-    b.title = 'This only changes where the page ends; your text stays the same.';
+    b.textContent = on ? '↥ Undo break' : split ? '↧ Too long — next page' : '↧ Next page';
+    b.title = split ? 'This entry runs over a page end. Moving it only changes where the page ends; your text stays the same.'
+                    : 'This only changes where the page ends; your text stays the same.';
     b.onclick = e => { e.preventDefault(); set(path + '.page_break_before', !on); lastPath = path; render(); changed(); };
     el.appendChild(b);
   });

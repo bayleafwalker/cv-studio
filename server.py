@@ -480,7 +480,10 @@ def render_html(cv: dict) -> str:
     return f'<!doctype html><html><head><meta charset="utf-8"><title>{parts["name"]} — CV</title><meta name="author" content="{parts["name"]}"><style>{css}</style></head><body>{renderer(parts)}</body></html>'
 
 
-PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box-shadow:none!important;width:auto!important;min-height:0!important}.page-break,.pushed{padding-top:var(--push,0)!important}[data-cv]{position:relative}.cv-focus::before,.cv-split::before{content:"";position:absolute;inset:calc(var(--push,0px) - 3px) -3px -3px -3px;border:2px solid #147084;border-radius:2px;pointer-events:none}.cv-split::before{border-style:dashed;border-color:#d6626a}.cv-handle{position:absolute;top:calc(var(--push,0px) - 2pt);right:0;display:none;border:0;border-radius:4px;padding:3px 7px;background:#147084;color:#fff;font:600 10px system-ui,sans-serif;cursor:pointer;z-index:2}.cv-handle.on{background:#9a3940}[data-cv]:hover>.cv-handle,.cv-split>.cv-handle{display:block}@media print{.page-break,.pushed{padding-top:0!important}.cv-focus::before,.cv-split::before{display:none}.cv-handle{display:none!important}}</style>"
+# Only the block under the pointer offers its page-break handle, and only where there is a pointer:
+# on a touch screen the handle sat on top of the text with no way to dismiss it. There the dashed
+# outline and the note under the preview say the same thing, and the editor has a "new page" tick.
+PREVIEW_CSS = "<style>html{background:#fff!important}body{margin:0!important;box-shadow:none!important;width:auto!important;min-height:0!important}.page-break,.pushed{padding-top:var(--push,0)!important}[data-cv]{position:relative}.cv-focus::before,.cv-split::before{content:"";position:absolute;inset:calc(var(--push,0px) - 3px) -3px -3px -3px;border:2px solid #147084;border-radius:2px;pointer-events:none}.cv-split::before{border-style:dashed;border-color:#d6626a}.cv-handle{position:absolute;top:calc(var(--push,0px) - 3px);right:0;display:none;transform:translateY(-55%);border:0;border-radius:9px;padding:2px 7px;background:#147084;color:#fff;font:600 8px/1.5 system-ui,sans-serif;white-space:nowrap;cursor:pointer;z-index:2}.cv-handle.on,.cv-split>.cv-handle{background:#9a3940}@media(hover:hover){[data-cv]:hover>.cv-handle{display:block}}@media print{.page-break,.pushed{padding-top:0!important}.cv-focus::before,.cv-split::before{display:none}.cv-handle{display:none!important}}</style>"
 
 
 STATIC_DIR = ROOT / "static"
@@ -603,7 +606,9 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def chooser_page(self) -> bytes:
-        options = "".join(f'<button onclick="pick({json.dumps(p)})">{html.escape(p)}</button>' for p in list_persons())
+        # The name goes inside a double-quoted attribute, so the JSON literal has to be escaped too:
+        # unescaped it closed the attribute early and the button did nothing when clicked.
+        options = "".join(f'<button onclick="pick({html.escape(json.dumps(p))})">{html.escape(p)}</button>' for p in list_persons())
         return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CV Studio — who is editing?</title><link rel="stylesheet" href="/static/app.css"><style>.who{{max-width:520px;margin:8vh auto;padding:0 20px}}.who button{{display:block;width:100%;margin:8px 0;padding:14px;font-size:16px}}.who input{{padding:12px;font-size:16px}}</style></head><body><div class="who"><h1>Whose CV?</h1><p class="hint">Each person has their own folder of CVs on this server. Pick yourself; this browser remembers the choice.</p>{options}<h2>Someone new</h2><input id="name" placeholder="First name"><button class="secondary" onclick="pick(document.querySelector('#name').value, true)">Start</button><div id="problem" class="problem"></div></div><script>
 async function pick(name, create) {{ const r = await fetch(create ? '/api/persons' : '/api/person', {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{name}})}}); if (r.ok) location.href = '/'; else {{ const p = document.querySelector('#problem'); p.textContent = await r.text(); p.classList.add('show'); }} }}
 </script></body></html>""".encode()

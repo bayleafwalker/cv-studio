@@ -10,13 +10,20 @@ label{display:block;margin:10px 0 4px;font-weight:650}
 input,textarea,select{width:100%;border:1px solid #b9cbd2;border-radius:5px;padding:8px;font:inherit;background:white}
 textarea{min-height:70px;resize:vertical}
 .card{margin:10px 0;padding:12px;border:1px solid #cbd7dc;border-radius:7px;background:#fff}
+/* A whole section is a tinted card with an accent edge; the entries inside it stay white and indented,
+   so it is obvious which "up" and "down" move which thing. */
+section.card{padding-top:10px;border-color:#a9c1ca;border-left:4px solid #147084;background:#eaf1f3}
+section.card>.card{margin-left:10px;border-left:3px solid #cbd7dc}
+.controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-2px 0 10px;padding-bottom:8px;border-bottom:1px solid #cbd7dc}
+.controls .scope{margin-right:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5b7079}
+.controls button{padding:5px 9px;font-size:12px}
+section.card>.controls .scope{color:#147084}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 button{border:0;border-radius:5px;padding:9px 12px;background:#147084;color:white;font:inherit;font-weight:650;cursor:pointer}
 button.secondary{background:#60747e}
 button.danger{background:#9a3940}
-button.remove{background:#9a3940;padding:5px 8px;float:right}
-.mini{float:right;margin-right:6px}.mini button{padding:4px 7px;margin-left:3px}
+button.remove{background:#9a3940;padding:5px 8px}
 button:disabled{opacity:.5;cursor:default}
 .toggle{display:flex;align-items:center;gap:6px;font-weight:500}
 .toggle input{width:auto}
