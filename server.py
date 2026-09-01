@@ -120,8 +120,18 @@ def file_problem(path: Path) -> str | None:
     return " ".join(errors) if errors else None
 
 
-def list_profiles() -> list[dict[str, str]]:
-    return [{key: value for key, value in item.items() if key != "path"} for item in scan_profiles()]
+def mtime_of(path: Path) -> str:
+    """Nanosecond stamp used to notice that someone else (usually the GPT) rewrote a CV file.
+    A string, because a nanosecond count is larger than a browser's JSON number can hold exactly."""
+    try:
+        return str(path.stat().st_mtime_ns)
+    except OSError:
+        return ""
+
+
+def list_profiles() -> list[dict]:
+    return [{**{key: value for key, value in item.items() if key != "path"}, "mtime": mtime_of(item["path"])}
+            for item in scan_profiles()]
 
 
 def profile_path(profile: str) -> Path:
@@ -643,8 +653,9 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
             return self.plain("Sign in first: send an OAuth bearer token, or open the site in a browser and choose a person.", HTTPStatus.UNAUTHORIZED)
         if route == "/":
             profile = default_profile()
+            listing = list_profiles()  # listed before the CV is read, so a stamp is never newer than the content it describes
             initial_cv = load_cv(profile)
-            initial = {"cv": initial_cv, "profiles": list_profiles(), "templates": self.template_choices(),
+            initial = {"cv": initial_cv, "profiles": listing, "templates": self.template_choices(),
                        "preview": render_html(initial_cv) + preview_css(initial_cv),
                        "meta": {"profile": profile, "version": VERSION, "folder": str(profiles_dir()), "person": self.person, "hosted": PERSONS_MODE}}
             page = app_html().replace("__INITIAL__", json.dumps(initial).replace("</", "<\\/"))
@@ -737,10 +748,28 @@ async function pick(name, create) {{ const r = await fetch(create ? '/api/person
         if errors: return self.send(json.dumps({"errors": errors}).encode(), "application/json", HTTPStatus.BAD_REQUEST)
         try:
             profile = parse_qs(parsed.query).get("profile", ["my-cv"])[0]
+            stale = self.outdated(profile)
+            if stale is not None:
+                return self.send(json.dumps(stale).encode(), "application/json", HTTPStatus.CONFLICT)
             saved = save_cv(cv, profile)
         except ValueError as exc:
             return self.send(json.dumps({"errors": [str(exc)]}).encode(), "application/json", HTTPStatus.BAD_REQUEST)
-        self.send(json.dumps({"ok": True, "profile": saved}).encode(), "application/json")
+        self.send(json.dumps({"ok": True, "profile": saved, "mtime": mtime_of(profile_path(saved))}).encode(), "application/json")
+
+    def outdated(self, profile: str):
+        """If-Unmodified-Since carries the stamp the writer last read. A different stamp on disk means
+        someone else (the editor, or the GPT) wrote in between: refuse and hand back what is there now."""
+        expected = self.headers.get("If-Unmodified-Since", "").strip()
+        if not expected.isdigit() or profile == "sample":  # the sample is never written; saving it makes "my-cv"
+            return None
+        current = mtime_of(profile_path(profile))
+        if not current or current == expected:
+            return None
+        try:
+            return {"errors": ["This CV was changed somewhere else while you were editing."],
+                    "cv": load_cv(profile), "mtime": current}
+        except ValueError:
+            return None  # unreadable on disk: the save is the best thing that can happen to it
 
     def do_DELETE(self):
         parsed = urlparse(self.path)

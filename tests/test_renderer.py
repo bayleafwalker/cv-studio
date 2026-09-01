@@ -48,6 +48,44 @@ class RendererTests(unittest.TestCase):
             finally:
                 server.CONTENT.reset(token)
 
+    def test_a_stale_put_is_refused_so_an_agents_write_survives(self):
+        import http.client, json, threading
+        from http.server import ThreadingHTTPServer
+        sample = load_cv("sample")
+        with tempfile.TemporaryDirectory() as directory:
+            old_dir = server.CONTENT_DIR
+            server.CONTENT_DIR = Path(directory)
+            token = server.CONTENT.set(Path(directory))
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+            threading.Thread(target=httpd.serve_forever, daemon=True).start()
+            try:
+                server.save_cv(sample, "my-cv")
+                stamp = {p["id"]: p["mtime"] for p in server.list_profiles()}["my-cv"]
+                self.assertTrue(stamp)
+                agent = dict(sample, person=dict(sample["person"], name="Written by the GPT"))
+                server.save_cv(agent, "my-cv")  # someone else writes while the editor holds the old stamp
+
+                def put(body, stamp=None):
+                    headers = {"Content-Type": "application/json"}
+                    if stamp:
+                        headers["If-Unmodified-Since"] = stamp
+                    c = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+                    c.request("PUT", "/api/cv?profile=my-cv", body=json.dumps(body), headers=headers)
+                    r = c.getresponse(); data = json.loads(r.read()); c.close()
+                    return r.status, data
+
+                status, data = put(sample, stamp)
+                self.assertEqual(status, 409)
+                self.assertEqual(data["cv"]["person"]["name"], "Written by the GPT")
+                self.assertEqual(server.load_cv("my-cv")["person"]["name"], "Written by the GPT")
+                status, data = put(sample, data["mtime"])  # with the stamp it just read, the save goes through
+                self.assertEqual(status, 200)
+                self.assertEqual(server.load_cv("my-cv")["person"]["name"], "Your Name")
+                self.assertEqual(data["mtime"], {p["id"]: p["mtime"] for p in server.list_profiles()}["my-cv"])
+            finally:
+                httpd.shutdown(); httpd.server_close()
+                server.CONTENT.reset(token); server.CONTENT_DIR = old_dir
+
     def test_dropped_in_files_are_found_and_problems_explained(self):
         sample = load_cv("sample")
         with tempfile.TemporaryDirectory() as directory:

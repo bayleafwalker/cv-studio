@@ -12,19 +12,24 @@ const fid = path => 'f-' + path.replace(/[^a-z0-9]+/gi, '-');
 function field(label, value, path, area = false) {
   return `<label for="${fid(path)}">${label}</label>${area ? `<textarea id="${fid(path)}" data-path="${path}">${esc(value)}</textarea>` : `<input id="${fid(path)}" data-path="${path}" value="${esc(value)}">`}`;
 }
-function visible(item, path) {
-  return `<label class="toggle"><input type="checkbox" data-path="${path}.visible" ${item.visible === false ? '' : 'checked'}> Show this</label>`;
+// Repeated controls are icons and one-word labels, which is all a screen reader would announce. Every one
+// of them carries the name of the item it acts on, and the card says that name in visible text too.
+const nameOf = item => item.title || item.label || item.value || '';
+function visible(item, path, name) {
+  return `<label class="toggle"><input type="checkbox" data-path="${path}.visible" aria-label="Show ${esc(name)}" ${item.visible === false ? '' : 'checked'}> Show this</label>`;
 }
-function pageBreak(item, path) {
-  return `<label class="toggle"><input type="checkbox" data-path="${path}.page_break_before" ${item.page_break_before ? 'checked' : ''}> Start on a new page</label>`;
+function pageBreak(item, path, name) {
+  return `<label class="toggle"><input type="checkbox" data-path="${path}.page_break_before" aria-label="Start ${esc(name)} on a new page" ${item.page_break_before ? 'checked' : ''}> Start on a new page</label>`;
 }
 // Every card starts with one control strip that names what the buttons act on, so a whole section and
-// one entry inside it can no longer be mistaken for each other.
-function controls(scope, path, i, n, remove = true) {
-  return `<div class="controls"><span class="scope">${scope}</span><button class="secondary" data-move="${path},${i},-1" ${i === 0 ? 'disabled' : ''} title="Move this ${scope.toLowerCase()} up">▲ Up</button><button class="secondary" data-move="${path},${i},1" ${i === n - 1 ? 'disabled' : ''} title="Move this ${scope.toLowerCase()} down">▼ Down</button>${remove ? `<button class="remove" data-remove="${path}.${i}">Remove</button>` : ''}</div>`;
+// one entry inside it can no longer be mistaken for each other, and then says the item's own name.
+function controls(scope, path, i, n, name, remove = true) {
+  const what = esc(name);
+  return `<div class="controls"><span class="scope">${scope}</span><button class="secondary" data-move="${path},${i},-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${what} up" title="Move this ${scope.toLowerCase()} up">▲ Up</button><button class="secondary" data-move="${path},${i},1" ${i === n - 1 ? 'disabled' : ''} aria-label="Move ${what} down" title="Move this ${scope.toLowerCase()} down">▼ Down</button>${remove ? `<button class="remove" data-remove="${path}.${i}" aria-label="Remove ${what}">Remove</button>` : ''}</div><h3 class="card-title">${what}</h3>`;
 }
 function entry(e, path, i, n) {
-  return `<div class="card">${controls('Entry', path.replace(/\.\d+$/, ''), i, n)}${visible(e, path)}${pageBreak(e, path)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label for="${fid(path + '.bullets')}">Achievement bullets (one per line)</label><textarea id="${fid(path + '.bullets')}" data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
+  const name = nameOf(e) || `Entry ${i + 1}`;
+  return `<div class="card">${controls('Entry', path.replace(/\.\d+$/, ''), i, n, name)}${visible(e, path, name)}${pageBreak(e, path, name)}${field('Title', e.title, path + '.title')}${field('Organisation / school', e.organisation, path + '.organisation')}<div class="row"><div>${field('Dates', e.dates, path + '.dates')}</div><div>${field('Location', e.location, path + '.location')}</div></div>${field('Description', e.description, path + '.description', true)}<label for="${fid(path + '.bullets')}">Achievement bullets (one per line)</label><textarea id="${fid(path + '.bullets')}" data-bullets="${path}">${esc((e.bullets || []).join('\n'))}</textarea></div>`;
 }
 function profileOptions() {
   return profiles.map(p => `<option value="${esc(p.id)}" ${p.id === profile ? 'selected' : ''}>${p.error ? '⚠ ' : ''}${esc(p.label)}${p.error ? ' — cannot be opened' : ''}</option>`).join('');
@@ -43,10 +48,10 @@ ${meta.hosted ? `<div class="card"><b>Your CVs are kept on this server</b> under
 <p class="hint">Want ChatGPT to draft one? Click <b>Copy example for ChatGPT</b>, paste it into the chat, save the answer as a <code>.json</code> file, then click <b>Open a CV file…</b> (or drop the file onto this window, or put it in the CV folder).</p>
 <h2>Document style</h2><label for="f-template">Template</label><select id="f-template" data-template>${options}</select><p class="hint">The style changes presentation only; your content stays the same.</p>
 <h2>About you</h2>${field('Full name', cv.person.name, 'person.name')}${field('Headline', cv.person.headline, 'person.headline')}${field('Short introduction', cv.person.summary, 'person.summary', true)}
-<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card">${controls('Contact', 'contact', i, cv.contact.length)}${visible(x, 'contact.' + i)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}<button class="secondary" data-add-contact>Add contact detail</button>
-<h2>Sidebar</h2><p class="hint">Short lists such as skills and languages. In the modern style these appear as compact lines under the introduction.</p>${cv.sidebar_sections.map((x, i) => `<div class="card">${controls('Sidebar block', 'sidebar_sections', i, cv.sidebar_sections.length)}${visible(x, 'sidebar_sections.' + i)}${pageBreak(x, 'sidebar_sections.' + i)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label for="${fid('sidebar_sections.' + i + '.items')}">Items (one per line)</label><textarea id="${fid('sidebar_sections.' + i + '.items')}" data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}<button class="secondary" data-add-sidebar>Add sidebar block</button>
+<h2>Contact details</h2>${cv.contact.map((x, i) => `<div class="card">${controls('Contact', 'contact', i, cv.contact.length, nameOf(x) || `Contact ${i + 1}`)}${visible(x, 'contact.' + i, nameOf(x) || `Contact ${i + 1}`)}${field('Label', x.label, 'contact.' + i + '.label')}${field('Value', x.value, 'contact.' + i + '.value')}</div>`).join('')}<button class="secondary" data-add-contact>Add contact detail</button>
+<h2>Sidebar</h2><p class="hint">Short lists such as skills and languages. In the modern style these appear as compact lines under the introduction.</p>${cv.sidebar_sections.map((x, i) => `<div class="card">${controls('Sidebar block', 'sidebar_sections', i, cv.sidebar_sections.length, nameOf(x) || `Sidebar block ${i + 1}`)}${visible(x, 'sidebar_sections.' + i, nameOf(x) || `Sidebar block ${i + 1}`)}${pageBreak(x, 'sidebar_sections.' + i, nameOf(x) || `Sidebar block ${i + 1}`)}${field('Heading', x.title, 'sidebar_sections.' + i + '.title')}<label for="${fid('sidebar_sections.' + i + '.items')}">Items (one per line)</label><textarea id="${fid('sidebar_sections.' + i + '.items')}" data-items="sidebar_sections.${i}">${esc((x.items || []).join('\n'))}</textarea></div>`).join('')}<button class="secondary" data-add-sidebar>Add sidebar block</button>
 <h2>Main CV sections</h2><p class="hint">The tinted strip at the top of a card says what its buttons move: a whole <b>section</b>, or one <b>entry</b> inside it. Any section, entry or sidebar block can start on a fresh A4 page; on a computer you can also hover an entry in the preview and click <b>Next page</b>.</p>
-${cv.sections.map((s, i) => `<section class="card">${controls('Section', 'sections', i, cv.sections.length, false)}${visible(s, 'sections.' + i)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`, j, s.entries.length)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
+${cv.sections.map((s, i) => `<section class="card">${controls('Section', 'sections', i, cv.sections.length, nameOf(s) || `Section ${i + 1}`, false)}${visible(s, 'sections.' + i, nameOf(s) || `Section ${i + 1}`)}<label class="toggle"><input type="checkbox" data-path="sections.${i}.page_break_before" aria-label="Start ${esc(nameOf(s) || `Section ${i + 1}`)} on a new page" ${s.page_break_before ? 'checked' : ''}> Start this section on a new page</label>${field('Section heading', s.title, 'sections.' + i + '.title')}<p class="hint">${s.type}</p>${s.entries.map((e, j) => entry(e, `sections.${i}.entries.${j}`, j, s.entries.length)).join('')}<button class="secondary" data-add="${i}">Add ${s.type} entry</button></section>`).join('')}
 <p class="hint">CV Studio ${esc(meta.version)}${meta.person ? ` · editing as <b>${esc(meta.person)}</b> · <a href="#" onclick="leave();return false">switch person</a>` : ''}</p>`;
   bind();
 }
@@ -67,18 +72,45 @@ function bind() {
   form.querySelectorAll('[data-bullets]').forEach(el => el.oninput = () => { get(el.dataset.bullets).bullets = el.value.split('\n').filter(Boolean); changed(); });
   form.querySelectorAll('[data-items]').forEach(el => el.oninput = () => { get(el.dataset.items).items = el.value.split('\n').filter(Boolean); changed(); });
   form.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { const p = b.dataset.remove.split('.'), idx = +p.pop(), list = get(p.join('.')), [item] = list.splice(idx, 1); undoStack.push({list: p.join('.'), idx, item}); render(); changed(); tell(`Removed “${esc(item.title || item.label || item.value || 'item')}”.<button onclick="undo()">Undo</button>`); });
-  form.querySelectorAll('[data-move]').forEach(b => b.onclick = () => { const [path, i, d] = b.dataset.move.split(','), list = get(path), from = +i, to = from + +d; if (to < 0 || to >= list.length) return; [list[from], list[to]] = [list[to], list[from]]; render(); changed(); form.querySelector(`[data-move="${path},${to},${d}"]`)?.focus(); });
+  form.querySelectorAll('[data-move]').forEach(b => b.onclick = () => { const [path, i, d] = b.dataset.move.split(','), list = get(path), from = +i, to = from + +d; if (to < 0 || to >= list.length) return; [list[from], list[to]] = [list[to], list[from]]; undoStack.push({type: 'move', list: path, from, to}); render(); changed(); refocusMove(path, to, +d); });
   const addC = form.querySelector('[data-add-contact]'); if (addC) addC.onclick = () => { cv.contact.push({label: 'Website', value: '', visible: true}); render(); changed(); form.querySelector(`[data-path="contact.${cv.contact.length - 1}.value"]`).focus(); };
   const addS = form.querySelector('[data-add-sidebar]'); if (addS) addS.onclick = () => { cv.sidebar_sections.push({title: 'New block', visible: true, items: []}); render(); changed(); form.querySelector(`[data-path="sidebar_sections.${cv.sidebar_sections.length - 1}.title"]`).select(); };
   form.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { cv.sections[+b.dataset.add].entries.push({title: 'New entry', organisation: '', dates: '', location: '', description: '', bullets: [], visible: true}); render(); changed(); });
 }
 
+// After the move the item sits at the end of the list as often as not, where the button that carried the
+// keystroke is the disabled one and can hold no focus; the other direction is then the live one.
+function refocusMove(path, to, d) {
+  const at = way => form.querySelector(`[data-move="${path},${to},${way}"]`);
+  const same = at(d);
+  (same && !same.disabled ? same : at(-d))?.focus();
+}
 const undoStack = [];
-function undo() { const u = undoStack.pop(); if (!u) return; get(u.list).splice(u.idx, 0, u.item); render(); changed(); hush(); ok('Put back.'); }
+function undo() {
+  const u = undoStack.pop();
+  if (!u) return;
+  const list = get(u.list);
+  if (u.type === 'move') [list[u.from], list[u.to]] = [list[u.to], list[u.from]];
+  else list.splice(u.idx, 0, u.item);
+  render(); changed(); hush(); ok(u.type === 'move' ? 'Move undone.' : 'Put back.');
+}
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && undoStack.length) { e.preventDefault(); undo(); } });
 // Editing marks the CV dirty and schedules a save; re-rendering the form never does (that caused an endless save/redraw loop).
 let previewTimer, saveTimer, dirty = false;
-function changed() { dirty = true; status.textContent = 'Saving…'; clearTimeout(saveTimer); saveTimer = setTimeout(save, 700); updatePreview(); }
+// The stamp of the file as this page last read or wrote it, and whether saving is held back until the
+// person has said what to do about a version someone else wrote.
+let openedStamp = null, waiting = false;
+function changed() { dirty = true; clearTimeout(saveTimer); if (waiting) status.textContent = 'Not saved — choose which version to keep.'; else { status.textContent = 'Saving…'; saveTimer = setTimeout(save, 700); } updatePreview(); }
+function stampOf(id) { return (profiles.find(p => p.id === id) || {}).mtime || null; }
+// Someone else — usually the GPT through PUT /api/cv — rewrote the CV that is open here.
+function outsideChange() {
+  if (!dirty) { loadProfile(profile, true).then(() => tell('This CV was updated somewhere else (probably the GPT) and has been reloaded.')); return; }
+  waiting = true; clearTimeout(saveTimer);
+  status.textContent = 'Not saved — choose which version to keep.';
+  tell('This CV was changed somewhere else (probably the GPT) while you were editing. Nothing has been saved over.<button onclick="keepMine()">Keep mine</button><button onclick="useNewVersion()">Use the new version</button>');
+}
+async function keepMine() { waiting = false; openedStamp = null; hush(); await save(); }
+async function useNewVersion() { waiting = false; dirty = false; hush(); await loadProfile(profile, true); ok('The newer version is open.'); }
 function updatePreview() {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(async () => {
@@ -102,9 +134,11 @@ function paginate() {
   doc.querySelectorAll('.pushed').forEach(el => { el.classList.remove('pushed'); el.style.removeProperty('--push'); });
   doc.querySelectorAll('.page-break').forEach(el => el.style.setProperty('--push', '0px'));
   const scrollTop = () => doc.documentElement.scrollTop;
-  doc.querySelectorAll('.page-break, .masthead, .contact, .summary, .sidebar-section, .main-section > h2, .entry, .entry > :not(.cv-handle), li').forEach(el => {
+  // Only what the templates really declare break-inside: avoid on. Simulating it on blocks that print
+  // happily splits (the masthead, the summary, the parts inside an entry) invented pushes that compounded.
+  doc.querySelectorAll('.page-break, .sidebar-section, .main-section > h2, .entry, li').forEach(el => {
     const box = el.getBoundingClientRect(), top = box.top + scrollTop(), bottom = top + box.height;
-    if (!box.height) return;
+    if (!box.height || el.parentElement?.closest('.pushed')) return;  // already carried down by its container
     const k = Math.floor(top / PAGE), pageTop = k * PAGE + mt, limit = (k + 1) * PAGE - mb;
     let push = 0;
     if (el.classList.contains('page-break') && top - pageTop > 1) push = (k + 1) * PAGE + mt - top;
@@ -121,7 +155,9 @@ function paginate() {
 function fitPreview() {
   const doc = preview.contentDocument, m = margins();
   if (doc && doc.documentElement) {
-    const height = doc.documentElement.scrollHeight, pages = Math.max(1, Math.ceil((height - 2) / PAGE));
+    // The body's own height, not the scroll height: the iframe is resized to the last count, which then
+    // props the scroll height up and the number could only ever grow.
+    const height = doc.body.getBoundingClientRect().height, pages = Math.max(1, Math.ceil((height - 2) / PAGE));
     preview.style.height = (pages * PAGE) + 'px';
     document.querySelector('#pagecount').textContent = pages === 1 ? '1 page' : `${pages} pages — the red lines show where pages end`;
     const band = 'rgba(214,98,106,.07)', mt = m.top * MM, mb = m.bottom * MM;
@@ -198,6 +234,10 @@ window.addEventListener('resize', fitPreview);
 async function reloadProfiles() { profiles = await fetch('/api/profiles').then(r => r.json()); profiles.forEach(p => known.add(p.id)); renderProfiles(); }
 async function loadProfile(id, quiet = false) {
   if (dirty) { await save(); if (dirty) { renderProfiles(); return; } }
+  undoStack.length = 0;  // the stack holds paths into the CV that is being closed
+  waiting = false;
+  await reloadProfiles();  // the stamp is read before the content, so it can only ever look older, never newer
+  const stamp = stampOf(id);
   const r = await fetch('/api/cv?profile=' + encodeURIComponent(id));
   if (!r.ok) {
     const info = profiles.find(p => p.id === id) || {};
@@ -205,15 +245,18 @@ async function loadProfile(id, quiet = false) {
     renderProfiles();
     return;
   }
-  cv = await r.json(); profile = id; render(); updatePreview(); hush();
+  cv = await r.json(); profile = id; openedStamp = stamp; render(); updatePreview(); hush();
   if (!quiet) ok('Opened from this computer.');
 }
 async function save() {
   clearTimeout(saveTimer);
-  const r = await fetch('/api/cv?profile=' + encodeURIComponent(profile), {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cv)});
+  const headers = {'Content-Type': 'application/json'};
+  if (openedStamp) headers['If-Unmodified-Since'] = String(openedStamp);  // never overwrite a version this page has not seen
+  const r = await fetch('/api/cv?profile=' + encodeURIComponent(profile), {method: 'PUT', headers, body: JSON.stringify(cv)});
   const d = await r.json();
+  if (r.status === 409) { openedStamp = d.mtime; outsideChange(); return; }
   if (!r.ok) { fail('Not saved yet: ' + d.errors.join(' ')); return; }
-  dirty = false;
+  dirty = false; openedStamp = d.mtime || null;
   const switched = d.profile !== profile;
   profile = d.profile;
   await reloadProfiles();
@@ -321,6 +364,11 @@ async function watchFolder() {
     const broke = latest.filter(p => p.error && !(profiles.find(q => q.id === p.id) || {}).error);
     const fixed = latest.filter(p => !p.error && (profiles.find(q => q.id === p.id) || {}).error);
     profiles = latest; latest.forEach(p => known.add(p.id)); renderProfiles();
+    const open = latest.find(p => p.id === profile);
+    if (open && !open.error && open.mtime && openedStamp && open.mtime !== openedStamp && !waiting) {
+      openedStamp = open.mtime;
+      return outsideChange();
+    }
     if (fresh.length) {
       const p = fresh[0];
       if (p.error) fail(`New file found: ${p.file}\n${p.error}\n\nFix the file and save it; it is checked again automatically.`);
@@ -339,6 +387,7 @@ async function watchFolder() {
 const initial = JSON.parse(document.querySelector('#initial').textContent);
 meta = initial.meta;
 profiles = initial.profiles; templates = initial.templates; profile = meta.profile; cv = initial.cv;
+openedStamp = stampOf(profile);
 profiles.forEach(p => known.add(p.id));
 preview.srcdoc = initial.preview; render();
 ok(profile === 'sample' ? 'Ready. This is the example CV; start typing and your version is saved automatically.' : 'Ready — saved changes stay on this computer.');

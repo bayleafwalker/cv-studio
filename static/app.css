@@ -18,6 +18,9 @@ section.card>.card{margin-left:10px;border-left:3px solid #cbd7dc}
 .controls .scope{margin-right:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5b7079}
 .controls button{padding:5px 9px;font-size:12px}
 section.card>.controls .scope{color:#147084}
+/* The card says in visible text which entry it is; it is also the accessible name the icon buttons borrow. */
+.card-title{margin:-4px 0 8px;font-size:14px;font-weight:700;color:#3c4f5a;overflow-wrap:anywhere}
+section.card>.card-title{font-size:15px;color:#147084}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 button{border:0;border-radius:5px;padding:9px 12px;background:#147084;color:white;font:inherit;font-weight:650;cursor:pointer}
