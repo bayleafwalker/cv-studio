@@ -21,11 +21,16 @@ fs.writeFileSync(chatgptFile, JSON.stringify({ ...sample, person: { ...sample.pe
 try {
   await new Promise(r => setTimeout(r, 1500));
   const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
-  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, acceptDownloads: true });
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
+  const remoteRequests = [];
+  const localOrigin = `http://127.0.0.1:${port}`;
+  page.on('request', request => { if (!request.url().startsWith(localOrigin)) remoteRequests.push(request.url()); });
   page.on('dialog', d => d.accept());
   const status = () => page.locator('#status').innerText();
   await page.goto(`http://127.0.0.1:${port}/`);
+  expect('ordinary fields are labelled', await page.getByLabel('Full name').count() === 1);
+  expect('repeat controls name their entry', await page.getByRole('button', { name: 'Remove Email' }).count() === 1);
 
   // Typing saves without re-rendering the form or losing focus.
   await page.locator('[data-path="person.name"]').fill('Test Person'); await page.waitForTimeout(1200);
@@ -39,6 +44,18 @@ try {
   // Importing a file names the CV after the file, with no prompt.
   await page.locator('#backup-file').setInputFiles(chatgptFile); await page.waitForTimeout(1200);
   expect('import names CV after file', (await page.locator('[data-profile]').inputValue()) === 'cv (1)');
+
+  // Export the imported CV through the visible nontechnical-user path and
+  // confirm it is self-contained output for the same local profile.
+  const [htmlDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download HTML' }).click(),
+  ]);
+  const htmlPath = path.join(downloads, 'exported-cv.html');
+  await htmlDownload.saveAs(htmlPath);
+  const exportedHtml = fs.readFileSync(htmlPath, 'utf8');
+  expect('HTML export carries the imported profile', exportedHtml.includes('Imported Person'));
+  expect('HTML export embeds its stylesheet', exportedHtml.includes('<style'));
 
   // A broken file dropped into the folder is reported with the reason; fixing it is noticed.
   const dropped = path.join(scratch, 'profiles', 'From ChatGPT.json');
@@ -69,6 +86,7 @@ try {
   await page.locator('[data-remove="contact.0"]').click(); await page.locator('#notice button').click(); await page.waitForTimeout(300);
   expect('undo restores', (await page.evaluate(() => cv.contact[0].label)) === 'Email');
   expect('no JS errors', errors.length === 0, errors.join(' | '));
+  expect('local edit/import/export made no off-device requests', remoteRequests.length === 0, remoteRequests.join(' | '));
   await browser.close();
 } finally {
   server.kill(); spawn('pkill', ['-f', `server.py --port ${port}`]);
